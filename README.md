@@ -69,11 +69,11 @@ Loader and enable both.
 ## Working on it
 
 Current completion work and validation boundaries: [DEVELOPMENT_STEPS.md](DEVELOPMENT_STEPS.md).
-`1.1.1-test.3` adds per-kind native launch profiles, hand-relative release offsets, matching draw/learn movement
-equations, release-time correction, grenade armour initialization, and bounded flight comparisons. Giga display
-was confirmed by the user in test.2; the new accuracy model still needs the focused check in
-[GRENADE_MODEL.md](GRENADE_MODEL.md). Prone weapon arcs remain in progress. Existing stratagem/C4 behavior and
-automatic learning are retained. Reference findings are in [REFERENCE_FINDINGS.md](REFERENCE_FINDINGS.md).
+`1.1.1-test.4` corrects grenade learning to use an airborne window and the hand/camera pose actually displayed
+before the throw animation. Prior angle/origin samples are preserved in `fit_backups` when each kind first adopts
+the new fit. The user found Giga/Melta errors and Impact convergence in test.3; analysis and offline replay results
+are in [TEST3_FINDINGS.md](TEST3_FINDINGS.md). Actual test.4 landing accuracy remains unverified. Ordinary/prone weapon
+muzzle origins are deferred. Existing stratagem/C4 behavior, native grenade profiles and automatic learning remain.
 
 ```bash
 python -m pip install lupa

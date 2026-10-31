@@ -9,7 +9,7 @@
 -- Transmog's catalog (Nexus 16633).
 local chef = ...
 local M = {}
-local VERSION = '1.1.1-test.3'
+local VERSION = '1.1.1-test.4'
 
 if chef.has and chef.has('own_log') then chef.own_log('throwable_arcs') end
 local function log(fmt, ...) chef.log(fmt, ...) end
@@ -1070,7 +1070,7 @@ local grenade = (function()
   local GRENADE_SPEED, GRENADE_LIFT, WALK = 21, 5, 1
   -- (GRENADE_LOW 0.2: a Melta mine is held low, and 0.6 until test.20 took it for in hand only now and then)
   local GRENADE_HAND, GRENADE_LOW, GRENADE_HIGH = 1.0, 0.2, 2.4
-  local GRENADE_FAST, GRENADE_STEADY, GRENADE_FIT, GRENADE_FLY, GRENADE_KEEP = 5, 0.15, 0.3, 2.5, 9
+  local GRENADE_FAST, GRENADE_STEADY, GRENADE_FIT, GRENADE_FLY, GRENADE_KEEP = 5, 0.15, 0.65, 2.5, 9
   local GRENADE_SOON, GRENADE_REACH, GRENADE_OFF, GRENADE_SKIP = 0.2, 3, 0.15, 1.5
   local SAVE = 'grenade_throws6'  -- (test.12-19's files are not read: learned the wrong things)
   -- drag by kind, from whole flights (test.16: thermite 22 to 18 m/s across over 2 s, Giga 18.7 to 17 over 1.4 s;
@@ -1163,12 +1163,14 @@ local grenade = (function()
     for i, a in ipairs(k.ahead) do
       if a * a + k.right[i] * k.right[i] > GRENADE_REACH * GRENADE_REACH then return nil end
     end
+    k.fit_revision = v.fit_revision == 2 and 2 or nil
     return k
   end
   local can_save = true
+  local fit_backups = {}                   -- old angle/origin calibration retained before changing reference frame
   local function persist()
     if can_save and chef.save_table then
-      local ok, why = chef.save_table(SAVE, { known = known })
+      local ok, why = chef.save_table(SAVE, { known = known, fit_backups = fit_backups })
       if not ok then log('grenade calibration: save failed (%s)', tostring(why)) end
     end
   end
@@ -1182,6 +1184,7 @@ local grenade = (function()
     end
     local repair = saved ~= nil and (type(saved) ~= 'table' or type(saved.known) ~= 'table')
     if type(saved) == 'table' and type(saved.known) == 'table' then
+      if type(saved.fit_backups) == 'table' then fit_backups = saved.fit_backups end
       for kind, v in pairs(saved.known) do
         if THROWABLES[kind] and not GUIDED[kind] then
           local k = checked_row(v)
@@ -1292,7 +1295,9 @@ local grenade = (function()
     local pitch = camera_pitch(c) + math.rad(lift)
     local vx, vy, vz = dx * s * math.cos(pitch), dy * s * math.cos(pitch), s * math.sin(pitch)
     preview = { kind = kind, t = now(), x = ox, y = oy, z = oz, vx = vx, vy = vy, vz = vz,
-                drag = drag, along = along, bonus = speed_up(false) }
+                drag = drag, along = along, bonus = speed_up(false),
+                anchor = { anchor[1], anchor[2], anchor[3] }, hx = hx, hy = hy,
+                pitch = math.deg(camera_pitch(c)) }
     local deepest = (feet_z or (c.z - 2)) - DEEPEST
     local pts, t, x, y, z = { { ox, oy, oz } }, 0, ox, oy, oz
     while t < MOST_T do
@@ -1329,42 +1334,47 @@ local grenade = (function()
       v[i] = dt > 0 and math.sqrt((p[i][2] - p[i - 1][2]) ^ 2 + (p[i][3] - p[i - 1][3]) ^ 2
                                   + (p[i][4] - p[i - 1][4]) ^ 2) / dt or 0
     end
-    local first
-    for i = 2, #p - 1 do
-      if v[i] >= GRENADE_FAST and v[i + 1] >= GRENADE_FAST and math.abs(v[i] - v[i + 1]) <= GRENADE_STEADY * v[i + 1] then
-        first = i
-        break
+    -- The first fast positions can still be the throw animation (especially Melta). Test.3's first matching pair
+    -- could select that swing, then give up after a bad fit. Fit an early airborne window instead, retrying only
+    -- candidates within the existing 0.2s early-flight limit. A longer window averages Giga's oscillating root path.
+    local function fit(first)
+      local t0 = p[first][1]
+      local n, st, stt, sx, sy, sz, stx, sty, stz, span = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+      for i = first, #p do
+        local t = p[i][1] - t0
+        if t > GRENADE_FIT or (i > first + 1 and v[i] < 0.5 * v[i - 1]) then break end
+        local z = p[i][4] + 0.5 * GRAVITY * t * t
+        n, st, stt, span = n + 1, st + t, stt + t * t, t
+        sx, sy, sz = sx + p[i][2], sy + p[i][3], sz + z
+        stx, sty, stz = stx + t * p[i][2], sty + t * p[i][3], stz + t * z
+      end
+      local den = n * stt - st * st
+      if n < 4 or span < 0.25 or den <= 0 then return nil end
+      local vx, vy, vz = (n * stx - st * sx) / den, (n * sty - st * sy) / den, (n * stz - st * sz) / den
+      local x0, y0, z0 = (sx - vx * st) / n, (sy - vy * st) / n, (sz - vz * st) / n
+      local off = 0
+      for i = first, first + n - 1 do
+        local t = p[i][1] - t0
+        off = off + (p[i][2] - x0 - vx * t) ^ 2 + (p[i][3] - y0 - vy * t) ^ 2
+              + (p[i][4] - z0 - vz * t + 0.5 * GRAVITY * t * t) ^ 2
+      end
+      off = math.sqrt(off / n)
+      if off > GRENADE_OFF then return nil end
+      return { t0 = t0, n = n, st = st, vx = vx, vy = vy, vz = vz, x = x0, y = y0, z = z0, rms = off, span = span }
+    end
+    local fitted
+    for i = 2, #p - 2 do
+      local elapsed = p[i][1] - f.left
+      if elapsed > GRENADE_SOON then break end
+      if elapsed >= 0.15 and v[i + 1] >= GRENADE_FAST and v[i + 2] >= GRENADE_FAST
+         and math.abs(v[i + 1] - v[i + 2]) <= GRENADE_STEADY * v[i + 2] then
+        fitted = fit(i)
+        if fitted then break end
       end
     end
-    if not first then return nil, 'no steady flight' end
-    -- (test.20: only a flight steady soon after the hand, GRENADE_SOON s: test.19's Melta mines were steady only once
-    -- they slid or rolled on the ground, and their starts, run back from there, came out 5 m behind and 30 m under me)
-    if p[first][1] - f.left > GRENADE_SOON then
-      return nil, string.format('steady only %.2f s after the hand', p[first][1] - f.left)
-    end
-    -- least squares over the first GRENADE_FIT s: straight across, falling at GRAVITY
-    local t0 = p[first][1]
-    local n, st, stt, sx, sy, sz, stx, sty, stz = 0, 0, 0, 0, 0, 0, 0, 0, 0
-    for i = first, #p do
-      local t = p[i][1] - t0
-      if t > GRENADE_FIT or (i > first and v[i] < 0.5 * v[i - 1]) then break end
-      local z = p[i][4] + 0.5 * GRAVITY * t * t
-      n, st, stt = n + 1, st + t, stt + t * t
-      sx, sy, sz, stx, sty, stz = sx + p[i][2], sy + p[i][3], sz + z, stx + t * p[i][2], sty + t * p[i][3], stz + t * z
-    end
-    local den = n * stt - st * st
-    if n < 4 or den <= 0 then return nil end
-    local vx, vy, vz = (n * stx - st * sx) / den, (n * sty - st * sy) / den, (n * stz - st * sz) / den
-    local x0, y0, z0 = (sx - vx * st) / n, (sy - vy * st) / n, (sz - vz * st) / n
-    -- (and only a flight that is a throw: off the fitted path by GRENADE_OFF m at most, RMS; bounces aren't)
-    local off = 0
-    for i = first, first + n - 1 do
-      local t = p[i][1] - t0
-      off = off + (p[i][2] - x0 - vx * t) ^ 2 + (p[i][3] - y0 - vy * t) ^ 2
-            + (p[i][4] - z0 - vz * t + 0.5 * GRAVITY * t * t) ^ 2
-    end
-    off = math.sqrt(off / n)
-    if off > GRENADE_OFF then return nil, string.format('not a throw: %.2f m off the path of one', off) end
+    if not fitted then return nil, 'no steady early flight fit' end
+    local t0, n, st = fitted.t0, fitted.n, fitted.st
+    local vx, vy, vz, x0, y0, z0 = fitted.vx, fitted.vy, fitted.vz, fitted.x, fitted.y, fitted.z
     local h = math.sqrt(vx * vx + vy * vy)
     if h < 1e-6 then return nil end
     -- the start: that path back at the last frame it was in my hand, from my feet then
@@ -1373,6 +1383,7 @@ local grenade = (function()
     local hx, hy = f.hx, f.hy
     local dx, dy = bx - f.feet[1], by - f.feet[2]
     local yaw = math.deg(math.atan2(vx * hy - vy * hx, vx * hx + vy * hy))
+    if math.abs(yaw) < 1e-8 then yaw = 0 end
     -- The parabola's vz is at t0, not at release. Restore it to f.left, just as the position above is restored.
     -- Horizontal drag uses the actual mean sample time instead of assuming every fit lasted the full 0.3s.
     -- This remains a short-flight drag approximation; drag-free ballistic fixtures are exact at any frame rate.
@@ -1390,7 +1401,7 @@ local grenade = (function()
     local anchor = f.anchor or f.feet
     local ax, ay = bx - anchor[1], by - anchor[2]
     return speed / f.up, math.deg(math.atan2(vz, h)) - f.pitch, yaw, sa, sr, su,
-           ax * hx + ay * hy, ax * hy - ay * hx, bz - anchor[3]
+           ax * hx + ay * hy, ax * hy - ay * hx, bz - anchor[3], fitted.rms, fitted.span
   end
 
   local function remember(list, x)
@@ -1415,7 +1426,7 @@ local grenade = (function()
           .. 'drag=%.6f along=%.4f bonus=%.3f samples=%s', f.kind, f.left - a.t, a.x, a.y, a.z,
           a.vx, a.vy, a.vz, a.drag, a.along, a.bonus, table.concat(samples, ';'))
     end
-    local s, lift, yaw, ahead, right, up, oa, oright, oup = measure(f)
+    local s, lift, yaw, ahead, right, up, oa, oright, oup, rms, span = measure(f)
     if s then
       local sample = { speed = s, lift = lift, yaw = yaw, ahead = ahead, right = right, up = up,
                        offset_ahead = oa, offset_right = oright, offset_up = oup }
@@ -1428,6 +1439,21 @@ local grenade = (function()
       return
     end
     local k = known[f.kind] or {}
+    if k.fit_revision ~= 2 then
+      -- Old angles/origins used the swing frame and short fit. Preserve them, but don't dilute this reference
+      -- correction with nine stale samples. Speeds and feet-history remain available; other kinds are untouched.
+      if not fit_backups[f.kind] then
+        local old = { fit_revision = k.fit_revision }
+        for _, field in ipairs(FIELDS) do
+          old[field] = {}
+          for i, x in ipairs(k[field] or {}) do old[field][i] = x end
+        end
+        fit_backups[f.kind] = old
+      end
+      for _, field in ipairs({ 'lift', 'walk', 'yaw', 'offset_ahead', 'offset_right', 'offset_up' }) do k[field] = {} end
+      k.fit_revision = 2
+      log('grenade calibration: %s fit revision 2; previous angles/origin preserved in fit_backups', f.kind)
+    end
     for _, field in ipairs(FIELDS) do k[field] = k[field] or {} end
     known[f.kind] = k
     local walking = math.abs(f.along) >= WALK
@@ -1441,6 +1467,7 @@ local grenade = (function()
     remember(k.offset_right, oright)
     remember(k.offset_up, oup)
     cached[f.kind] = nil
+    log('grenade fit: %s span=%.3f rms=%.4f release_offset=%.4f,%.4f,%.4f', f.kind, span, rms, oa, oright, oup)
     log('grenade %s thrown%s: %.1f m/s %+.1f deg up %+.1f right, from %.2f ahead %.2f right %.2f up; now %.1f m/s, '
         .. '%+.1f standing, %s walking, %+.1f right, from %.2f %.2f %.2f', f.kind, walking and ' walking' or '', s, lift,
         yaw, ahead, right, up, median(k.speed), median(k.lift) or GRENADE_LIFT,
@@ -1483,10 +1510,13 @@ local grenade = (function()
       local fast = x and t > held.t and ((x - held.p[1]) ^ 2 + (y - held.p[2]) ^ 2 + (z - held.p[3]) ^ 2)
                        / ((t - held.t) ^ 2) >= GRENADE_FAST * GRENADE_FAST
       if fast and not pending then
+        local ref = held.preview
+        if not ref or held.t - ref.t > 0.25 then ref = held end
         pending = { u = held.u, kind = held.kind, pts = { { held.t, held.p[1], held.p[2], held.p[3] } },
-                    pitch = held.pitch, mx = held.mx, my = held.my, along = held.along, up = held.up,
-                    feet = { held.feet[1], held.feet[2], held.feet[3] }, hx = held.hx, hy = held.hy, left = held.t,
-                    preview = held.preview, anchor = { held.p[1], held.p[2], held.p[3] } }
+                    pitch = ref.pitch, mx = held.mx, my = held.my, along = ref.along, up = ref.bonus or held.up,
+                    feet = { held.feet[1], held.feet[2], held.feet[3] }, hx = ref.hx, hy = ref.hy, left = held.t,
+                    preview = held.preview, anchor = ref.anchor and { ref.anchor[1], ref.anchor[2], ref.anchor[3] }
+                                                   or { held.p[1], held.p[2], held.p[3] } }
       end
       if fast and not close_to_hand(held.u, hand, x, y, z) then
         pending.at = t

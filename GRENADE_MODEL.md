@@ -47,4 +47,6 @@ The fitter restores both position and vertical velocity to the same release-time
 
 Use only the already-owned Giga: two stationary throws and two forward-walking throws at a similar moderate aim angle with the same armour. The log is read locally afterwards; no new probe or screenshot is required. This checks common launch/offset/movement behavior, not every grenade individually. The remaining weapon-prone limitation is separate.
 
+Update after test.3: the user also tested Melta and Impact. [TEST3_FINDINGS.md](TEST3_FINDINGS.md) records the observed errors and test.4 correction. Next check is Giga twice and Melta twice, about three seconds between throws. An Impact regression throw is optional when already equipped; recorded replay covers it offline. The original test.3 model is not considered accurate merely because its profiles came from native data.
+
 Holding G commits the game to throwing; it cannot be used as a manual cancel/stow or weapon-switch test. The corresponding synthetic pose-change fixture is only a defensive internal-state test.

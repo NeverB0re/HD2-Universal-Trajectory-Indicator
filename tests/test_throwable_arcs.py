@@ -1,5 +1,6 @@
 """Stratagem and C4 Trajectory on PUC Lua 5.1 (lupa) against a fake Chef Shared Loader:  python tests/test_throwable_arcs.py"""
 import importlib.util
+import json
 import math
 import os
 import re
@@ -216,9 +217,11 @@ class ArcTest(unittest.TestCase):
         return self.add_unit(kind, 0.3, -0.3, 1.5)
 
     def throw_nade(self, nade, speed, frames=200, extra=None):
-        """let go: it flies off along x at SPEED, level (the fake has no gravity), for FRAMES frames"""
-        self.lua.eval("""function(f, n, v, s) f.fly = function()
-          n.x = n.x + v / 60; if s then s.x = s.x + 3 / 60 end end end""")(self.fake, nade, speed, extra)
+        """let go horizontally with gravity, at SPEED for FRAMES frames (no terrain in this fixture)."""
+        self.lua.eval("""function(f, n, v, s) local elapsed = 0; f.fly = function()
+          n.x = n.x + v / 60
+          n.z = n.z - 9.81 * (elapsed + 1 / 120) / 60; elapsed = elapsed + 1 / 60
+          if s then s.x = s.x + 3 / 60 end end end""")(self.fake, nade, speed, extra)
         for _ in range(frames):
             self.fake.fly()
             self.frames(1)
@@ -407,7 +410,7 @@ class ArcTest(unittest.TestCase):
                 row = self.fake.saved["grenade_throws6"].known["7686544f539bb9b7"]
                 self.assertAlmostEqual(row.speed[2], 22, delta=.5)
                 self.assertAlmostEqual(row.ahead[1], .3, delta=.05)
-                self.assertAlmostEqual(row.lift[2], 5, delta=.001,
+                self.assertAlmostEqual(row.lift[1], 5, delta=.001,
                                        msg="vertical velocity must be restored to the release time")
 
     def test_walking_throw_learning_inverts_the_native_strength_model(self):
@@ -536,6 +539,84 @@ class ArcTest(unittest.TestCase):
         self.assertAlmostEqual(row.offset_ahead[1], 0, delta=.001)
         self.assertAlmostEqual(row.offset_right[1], 0, delta=.001)
         self.assertIsNotNone(row.offset_up[1])
+
+    def replay_recorded_flight(self, label, calibration=None):
+        with open(os.path.join(HERE, 'fixtures', 'grenade_flights_test3.json'), encoding='utf-8') as f:
+            row = next(r for r in json.load(f) if r['label'] == label)
+        if calibration:
+            self.load_calibration(calibration)
+        self.right_hand_at()
+        self.hand_pose(41 if label == 'impact' else 42)
+        v = row['preview_velocity']
+        length = math.sqrt(sum(x * x for x in v))
+        self.fake.cam.fx, self.fake.cam.fy, self.fake.cam.fz = (x / length for x in v)
+        nade = self.nade_in_hand(row['kind'])
+        self.fake['down']['g'] = True
+        self.frames(3)
+        self.fake['down']['g'] = False
+        previous = 0
+        for t, x, y, z in row['points'][1:]:
+            nade.x, nade.y, nade.z = x, y, z
+            self.frames(1, t - previous)
+            previous = t
+        self.frames(80)
+        return self.fake.saved['grenade_throws6'], row['kind']
+
+    def test_recorded_giga_learns_the_later_flight_direction_instead_of_the_early_left_bias(self):
+        saved, kind = self.replay_recorded_flight('giga')
+        self.assertEqual(saved.known[kind].fit_revision, 2)
+        self.assertGreater(saved.known[kind].yaw[1], 1,
+                           'recorded flight heads right of the old displayed direction')
+        self.assertLess(saved.known[kind].yaw[1], 4)
+
+    def test_recorded_melta_fits_after_the_hand_swing_instead_of_rejecting_the_whole_throw(self):
+        saved, kind = self.replay_recorded_flight('melta')
+        self.assertEqual(saved.known[kind].fit_revision, 2)
+        self.assertIsNotNone(saved.known[kind].offset_up[1])
+        self.assertNotIn('thrown: not measured', self.logs())
+
+    def test_recorded_impact_remains_measurable_with_the_longer_airborne_window(self):
+        saved, kind = self.replay_recorded_flight('impact')
+        self.assertAlmostEqual(saved.known[kind].yaw[1], 0, delta=.05)
+        self.assertAlmostEqual(saved.known[kind].speed[2], 22.4, delta=.3)
+
+    def test_reference_migration_preserves_old_angles_and_keeps_speeds(self):
+        saved, kind = self.replay_recorded_flight('melta', """return {known = {
+          ['ee4c107b941ab7f4'] = {speed={10.6}, lift={4.5}, yaw={-3},
+           offset_ahead={.1},offset_right={.4},offset_up={-.3}}}}""")
+        old = saved.fit_backups[kind]
+        self.assertEqual(old.yaw[1], -3)
+        self.assertEqual(old.offset_right[1], .4)
+        self.assertEqual(old.lift[1], 4.5)
+        self.assertEqual(saved.known[kind].speed[1], 10.6)
+        self.assertIsNone(saved.known[kind].yaw[2], 'old bias must not dilute the new measurement')
+        self.M = self.load()
+        self.assertEqual(self.fake.saved['grenade_throws6'].fit_backups[kind].yaw[1], -3)
+        saved_again, _ = self.replay_recorded_flight('melta')
+        self.assertEqual(saved_again.fit_backups[kind].yaw[1], -3)
+        self.assertIsNotNone(saved_again.known[kind].yaw[2], 'revision survives reload; second fit appends normally')
+
+    def test_release_offsets_reference_the_displayed_hand_before_the_throw_animation(self):
+        self.right_hand_at()
+        self.hand_pose(41)
+        nade = self.nade_in_hand('7686544f539bb9b7')
+        self.fake['down']['g'] = True
+        self.frames(3)
+        self.fake['down']['g'] = False
+        for _ in range(12):
+            nade.x -= .02
+            nade.y -= .01
+            self.fake.me.nodes[7][1], self.fake.me.nodes[7][2] = nade.x, nade.y
+            self.frames(1)
+        vx, vz = 22 * math.cos(math.radians(5)), 22 * math.sin(math.radians(5))
+        for i in range(1, 181):
+            t = i / 60
+            nade.x, nade.y, nade.z = .5 + vx * t, -.3, 1.9 + vz * t - 4.905 * t * t
+            self.frames(1)
+        row = self.fake.saved['grenade_throws6'].known['7686544f539bb9b7']
+        self.assertAlmostEqual(row.offset_ahead[1], .2, delta=.001)
+        self.assertAlmostEqual(row.offset_right[1], 0, delta=.001)
+        self.assertAlmostEqual(row.offset_up[1], .4, delta=.001)
 
     def test_weapon_cache_is_revalidated_after_the_weapon_leaves_me(self):
         gun = self.weapon_in_hand(self.GL)
