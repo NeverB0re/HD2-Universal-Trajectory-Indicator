@@ -69,9 +69,11 @@ Loader and enable both.
 ## Working on it
 
 Current completion work and validation boundaries: [DEVELOPMENT_STEPS.md](DEVELOPMENT_STEPS.md).
-`1.1.1-test.1` validates grenade calibration, preserves the first damaged save before recovery, and caches the
-calibration medians. It is an offline-checked test version; grenade hand/release identification and prone weapon
-arcs are still in progress. Existing stratagem/C4 behavior and the automatic learning feature are retained.
+`1.1.1-test.2` includes calibration recovery and cached medians from test.1, plus hand-node grenade identification,
+confirmed separation before learning a throw, and revalidation of cached weapons. This is an offline-checked test
+version: actual hand/release behavior still needs the focused game check, and prone weapon arcs and grenade flight
+accuracy remain in progress. Existing stratagem/C4 behavior and automatic learning are retained. Reference findings
+and source links are in [REFERENCE_FINDINGS.md](REFERENCE_FINDINGS.md).
 
 ```bash
 python -m pip install lupa

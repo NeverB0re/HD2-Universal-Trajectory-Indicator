@@ -12,7 +12,7 @@
 ## Ordered milestones
 
 1. **Calibration safety (implemented offline, runtime unverified):** validate loaded and newly learned grenade values; recover an invalid kind without discarding other valid kinds; preserve the original data before repair; cache medians outside the frame loop.
-2. **Equipment and release identification:** establish my player and held weapon/throwable reliably; invalidate stale weapons; distinguish hand movement from release; handle short grenade inputs. Research current loader and game object APIs first. Add targeted diagnostics only for missing evidence.
+2. **Equipment and release identification (implemented offline; focused runtime check pending):** invalidate stale weapons; distinguish hand movement from release; refresh candidates on grenade input/pose transitions. Reference research found a hand node, but no proven direct local-avatar unit mapping. Multiplayer identity and actual quick-throw detection remain validation limits.
 3. **Grenade trajectory accuracy:** align camera/feet/velocity snapshots to release time, fix the known time-reference error, use the current pose for release origin, initialize armour for grenades and verify perk factors. Reject inconsistent measurements before they become calibration. Retain learning rather than removing it without discussion.
 4. **Prone weapon arcs:** determine actual muzzle/launch direction by available nodes/data, then minimal targeted shots if needed; replace the prone suppression only when the resulting arc is correct. Check close camera/first-person classification separately.
 5. **Coverage and distribution:** compare the supported weapon/throwable list with the current roster/data; complete missing supported behavior; reduce diagnostic I/O; package notices; document actual limitations.
@@ -36,3 +36,24 @@ The actual local `grenade_throws6` data was also replayed through the fake loade
 Test package: `test-builds/Stratagem and C4 Trajectory v1.1.1-test.1.zip`. CRC and embedded source match were checked. The builder now includes `THIRD_PARTY_NOTICES.txt` verbatim in the ZIP (a separate packaging fix). The ZIP has not been installed or runtime-verified; it is not copied into `release/`.
 
 No game experiment is requested for step 1 alone: the data defect and cache behavior are reproducible offline. The current hand/release and prone problems still need the later milestones. Do not treat the test ZIP as a stable release or overwrite the user's live AppData during development.
+
+## Step 2: 1.1.1-test.2
+
+Reference research is recorded in `REFERENCE_FINDINGS.md`, with pinned NarrowHUD 2.0.0 source links. No new mod download was needed.
+
+- Grenade candidates are selected by current hand pose and distance to `attach_hand_r`, including low/prone hands and poses 40/41/42. If the node is unavailable, retain the old feet-based compatibility fallback, still gated by readable hand pose. Therefore the fallback retains more ambiguity and is named in the diagnostic log.
+- A fast movement starts a bounded candidate buffer; only actual separation from the hand confirms a release. This retains early samples/aim rather than adopting the camera angle several frames later. Pose-only cancellation does not start a flight.
+- Weapon selection is continuously checked for distance to the player and, when available, the hand. A throwable pose invalidates a previously selected gun even if aim stays pressed.
+- Reset grenade flights and movement history on player changes; do not learn an old player's flight across respawn/world changes.
+- Resolve hand nodes once per player (missing nodes retry every five seconds), share a single hand-pose read per frame, avoid repeated candidate-position queries, and request watch refresh only at bounded input/pose edges. No per-frame world scan was added.
+- Logs identify acquisition/loss and confirmed release, including `hand node` versus `feet fallback`. They do not stream position dumps every frame.
+
+Validation: 95/95 Lua 5.1 fake-loader tests passed. The 15 new tests cover hand-versus-feet selection, weapon poses, fast hand swings, low/prone hands, mine/underhand poses, cancellation, aim snapshots, respawn, stale/slung weapons, weapon-to-grenade switching, bounded reads, asynchronous refresh, and ballistic release samples at 30/60/120fps. None of this proves actual animation, accuracy, performance, or multiplayer identity.
+
+Focused runtime check for test.2 (use a familiar grenade such as Impact; no full weapon survey yet):
+
+1. Standing, hold the grenade and move the view; confirm the arc persists until release. Put one away without throwing and aim the gun; confirm no grenade arc remains.
+2. Keep aim held while switching a supported gun to the grenade; confirm the old weapon arc gives way to the grenade. C4/stratagem calibration is unchanged; a brief familiar-use check can catch accidental regressions.
+3. Hold the grenade prone, then try a short quick throw standing. Report any missing arc, flash, or stale arc; the log records whether detection used the hand node. Do not use landing accuracy as this stage's acceptance criterion: fixed feet-relative grenade origins, armour initialization and fit-time correction are still step 3.
+
+The existing log path is `%APPDATA%\Arrowhead\Helldivers2\throwable_arcs.log`. No additional probe mod is required. The test package is `test-builds/Stratagem and C4 Trajectory v1.1.1-test.2.zip`; do not install it beside another Throwable Arcs version. Runtime has not been verified and no push is permitted yet.

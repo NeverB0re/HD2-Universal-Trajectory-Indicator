@@ -53,16 +53,26 @@ chef = {
   unit_alive = function(u) return u.dead ~= true end,
   unit_kind = function(u) return u.kind end,
   unit_rotation = function(u) if u.f then return u.f[1], u.f[2], u.f[3], 0 end end,
-  unit_position = function(u)
+  unit_position = function(u, node)
     if u.kind == '46cab355bd8d4d37' then error('NATIVE CRASH: asked a runtime-built unit') end
+    if node and u.nodes and u.nodes[node] then
+      local p = u.nodes[node]; return p[1], p[2], p[3]
+    end
     return u.x, u.y, u.z
+  end,
+  unit_node = function(u, name)
+    fake.node_lookups = (fake.node_lookups or 0) + 1
+    if name == 'attach_hand_r' and u.nodes and u.nodes[7] then return 7 end
   end,
   watch = function(kinds)
     local w = { items = {}, kinds = kinds, active = true, lists = 0 }
     function w.stop() fake.watch_stopped = true end
     function w.pause() w.active = false end
     function w.resume() w.active = true end
-    function w.refresh() end
+    function w.refresh()
+      w.refreshes = (w.refreshes or 0) + 1
+      if fake.watch_period then w.next_list = math.min(w.next_list or 0, fake.t + 1 / 60) end
+    end
     fake.watches[#fake.watches + 1] = w
     return w
   end,
@@ -130,8 +140,9 @@ function fake.frame(M, dt)
     end
   end
   for _, w in ipairs(fake.watches) do
-    if w.active then
+    if w.active and (not fake.watch_period or fake.t >= (w.next_list or 0)) then
       w.items, w.lists = {}, w.lists + 1
+      w.next_list = fake.t + (fake.watch_period or 0)
       for _, u in ipairs(fake.units) do if w.kinds[u.kind] then w.items[#w.items + 1] = { unit = u, kind = u.kind } end end
     end
   end
@@ -267,6 +278,196 @@ class ArcTest(unittest.TestCase):
         self.fake["down"]["g"] = True
         self.frames(3)
         self.assertEqual(self.lines(), [])
+
+    def right_hand_at(self, x=0.3, y=-0.3, z=1.5):
+        self.fake.me.nodes = self.lua.table_from({7: self.lua.table_from([x, y, z])})
+
+    def test_grenade_by_my_feet_is_not_the_one_in_my_hand(self):
+        self.right_hand_at()
+        self.hand_pose(41)
+        self.add_unit("7686544f539bb9b7", 0.2, -0.1, 0.3)
+        self.fake["down"]["g"] = True
+        self.frames(3)
+        self.assertEqual(self.lines(), [])
+        self.assertNotIn("grenade hand:", self.logs())
+
+    def test_hand_proximity_picks_the_held_kind_over_a_nearer_mine_at_my_feet(self):
+        self.right_hand_at()
+        self.hand_pose(41)
+        self.add_unit("46333fc9e3d4bd34", 0.1, -0.1, 0.3)
+        self.nade_in_hand("7686544f539bb9b7")
+        self.fake["down"]["g"] = True
+        self.frames(3)
+        self.assertGreater(len(self.lines()), 20)
+        self.assertIn("grenade hand: 7686544f539bb9b7 (pose 41, hand node)", self.logs())
+        self.assertNotIn("grenade hand: 46333fc9e3d4bd34", self.logs())
+
+    def test_a_nearby_grenade_does_not_draw_in_a_weapon_hand_pose(self):
+        self.right_hand_at()
+        self.hand_pose(10)
+        self.nade_in_hand("7686544f539bb9b7")
+        self.fake["mouse"]["right"] = True
+        self.frames(3)
+        self.assertEqual(self.lines(), [])
+
+    def test_a_fast_hand_swing_keeps_the_grenade_arc_without_learning_a_throw(self):
+        self.right_hand_at()
+        self.hand_pose(41)
+        nade = self.nade_in_hand("7686544f539bb9b7")
+        self.fake["down"]["g"] = True
+        self.frames(3)
+        for i in range(1, 6):
+            nade.x = .3 + .2 * i
+            self.fake.me.nodes[7][1] = nade.x
+            self.frames(1)
+            self.assertGreater(len(self.lines()), 20)
+        self.frames(180)
+        self.assertNotIn("grenade release:", self.logs())
+        self.assertIsNone(self.fake.saved["grenade_throws6"])
+
+    def test_low_prone_grenade_is_found_at_the_hand_without_a_feet_height_cutoff(self):
+        self.right_hand_at(z=0.05)
+        self.hand_pose(41)
+        self.add_unit("7686544f539bb9b7", .3, -.3, .05)
+        self.fake["down"]["g"] = True
+        self.frames(3)
+        self.assertGreater(len(self.lines()), 20)
+
+    def test_mines_and_underhand_grenades_accept_their_actual_hand_poses(self):
+        for pose, kind in ((40, "2968deba6d6c2f09"), (42, "ee4c107b941ab7f4"), (42, "46333fc9e3d4bd34")):
+            with self.subTest(pose=pose, kind=kind):
+                self.setUp()
+                self.right_hand_at()
+                self.hand_pose(pose)
+                self.nade_in_hand(kind)
+                self.fake["down"]["g"] = True
+                self.frames(3)
+                self.assertGreater(len(self.lines()), 20)
+
+    def test_putting_a_grenade_away_does_not_start_a_flight(self):
+        self.right_hand_at()
+        self.hand_pose(41)
+        self.nade_in_hand("7686544f539bb9b7")
+        self.fake["down"]["g"] = True
+        self.frames(3)
+        self.fake.grip = 10
+        self.frames(200)
+        self.assertLessEqual(len(self.lines()), 1)
+        self.assertNotIn("grenade release:", self.logs())
+        self.assertIsNone(self.fake.saved["grenade_throws6"])
+
+    def test_confirmed_release_uses_early_samples_and_the_aim_before_separation(self):
+        self.right_hand_at()
+        self.hand_pose(41)
+        nade = self.nade_in_hand("7686544f539bb9b7")
+        self.fake["down"]["g"] = True
+        self.frames(3)
+        self.fake["down"]["g"] = False
+        for _ in range(2):
+            nade.x += 22 / 60
+            self.frames(1)
+        # A camera turn before separation must not turn this already-started throw into a backwards measurement.
+        self.fake.cam.fx = -1
+        self.throw_nade(nade, 22)
+        self.assertIn("grenade release: 7686544f539bb9b7 (separated from hand node)", self.logs())
+        k = self.fake.saved["grenade_throws6"].known["7686544f539bb9b7"]
+        self.assertAlmostEqual(k.speed[2], 22, delta=.5)
+        self.assertAlmostEqual(k.yaw[1], 0, delta=.1)
+        self.assertAlmostEqual(k.ahead[1], .3, delta=.05)
+
+    def test_a_flight_is_not_learned_across_respawn(self):
+        self.right_hand_at()
+        self.hand_pose(41)
+        nade = self.nade_in_hand("7686544f539bb9b7")
+        self.fake["down"]["g"] = True
+        self.frames(3)
+        self.throw_nade(nade, 22, frames=5)
+        self.fake.me.dead = True
+        self.fake.me = self.add_unit("4d1c334d294dfa97", 0, 0, 0)
+        self.right_hand_at()
+        self.throw_nade(nade, 22)
+        self.assertIsNone(self.fake.saved["grenade_throws6"])
+
+    def test_release_confirmation_keeps_ballistic_samples_at_different_frame_rates(self):
+        for fps in (30, 60, 120):
+            with self.subTest(fps=fps):
+                self.setUp()
+                self.right_hand_at()
+                self.hand_pose(41)
+                nade = self.nade_in_hand("7686544f539bb9b7")
+                self.fake["down"]["g"] = True
+                self.frames(3, 1 / fps)
+                self.fake["down"]["g"] = False
+                vx, vz = 22 * math.cos(math.radians(5)), 22 * math.sin(math.radians(5))
+                for i in range(1, 3 * fps + 1):
+                    t = i / fps
+                    nade.x, nade.z = .3 + vx * t, 1.5 + vz * t - 4.905 * t * t
+                    self.frames(1, 1 / fps)
+                row = self.fake.saved["grenade_throws6"].known["7686544f539bb9b7"]
+                self.assertAlmostEqual(row.speed[2], 22, delta=.5)
+                self.assertAlmostEqual(row.ahead[1], .3, delta=.05)
+
+    def test_weapon_cache_is_revalidated_after_the_weapon_leaves_me(self):
+        gun = self.weapon_in_hand(self.GL)
+        self.fake["mouse"]["right"] = True
+        self.frames(3)
+        self.assertGreater(len(self.lines()), 20)
+        gun.x = 20
+        self.frames(1)
+        self.assertEqual(len(self.lines()), 1, "clear old arc instead of drawing from the distant gun")
+
+    def test_a_slung_weapon_cannot_stay_selected_away_from_the_hand(self):
+        gun = self.weapon_in_hand(self.GL)
+        self.right_hand_at(gun.x, gun.y, gun.z)
+        self.hand_pose(10)
+        self.fake["mouse"]["right"] = True
+        self.frames(3)
+        gun.y += 1.2
+        self.frames(1)
+        self.assertEqual(len(self.lines()), 1)
+
+    def test_switching_to_a_grenade_invalidates_the_weapon_even_with_aim_held(self):
+        gun = self.weapon_in_hand(self.GL)
+        self.right_hand_at(gun.x, gun.y, gun.z)
+        self.hand_pose(10)
+        self.fake["mouse"]["right"] = True
+        self.frames(3)
+        self.right_hand_at()
+        self.fake.grip = 41
+        self.nade_in_hand("7686544f539bb9b7")
+        self.frames(3)
+        self.assertGreater(len(self.lines()), 20)
+        self.assertIn("weapon aimed: none (throwable hand pose)", self.logs())
+        self.assertIn("grenade hand: 7686544f539bb9b7", self.logs())
+        self.assertAlmostEqual(self.lines()[0][1], -.1, delta=.02,
+                               msg="grenade's hand offset, not the gun's y=-.2 muzzle")
+
+    def test_hand_node_lookup_and_pose_reads_are_bounded(self):
+        self.right_hand_at()
+        self.hand_pose(41)
+        self.nade_in_hand("7686544f539bb9b7")
+        self.fake["mouse"]["right"] = True
+        self.frames(3)
+        lookups = self.fake.node_lookups
+        reads = self.fake.calls["Unit.animation_get_variable"]
+        self.frames(120)
+        self.assertEqual(self.fake.node_lookups, lookups)
+        self.assertEqual(self.fake.calls["Unit.animation_get_variable"] - reads, 120)
+
+    def test_a_throw_pose_requests_an_async_watch_refresh_without_per_frame_scans(self):
+        self.fake.watch_period = .5
+        self.frames(1)                               # empty list already obtained
+        self.right_hand_at()
+        self.hand_pose(41)
+        self.nade_in_hand("7686544f539bb9b7")
+        self.fake["down"]["g"] = True
+        self.frames(1)
+        self.assertEqual(self.lines(), [], "refresh does not invent a unit before the list arrives")
+        self.frames(1)
+        self.assertGreater(len(self.lines()), 20)
+        watch = next(w for w in self.fake.watches.values() if w.kinds["7686544f539bb9b7"])
+        self.frames(120)
+        self.assertEqual(watch.refreshes, 1)
 
     def load_calibration(self, lua_data):
         self.fake.saved["grenade_throws6"] = self.lua.execute(lua_data)

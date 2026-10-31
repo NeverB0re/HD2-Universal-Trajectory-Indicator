@@ -1,6 +1,6 @@
 Third-party notices
 
-Stratagem and C4 Trajectory reads C4 and weapons the way NarrowHUD does, and src/weapon_types.lua is taken from
+Stratagem and C4 Trajectory reads C4, weapons and the hand node the way NarrowHUD does, and src/weapon_types.lua is taken from
 NarrowHUD's game data. Based on NarrowHUD by luka189 (https://github.com/luka189/NarrowHUD, Nexus 17882).
 NarrowHUD's licence, in full:
 

@@ -9,7 +9,7 @@
 -- Transmog's catalog (Nexus 16633).
 local chef = ...
 local M = {}
-local VERSION = '1.1.1-test.1'
+local VERSION = '1.1.1-test.2'
 
 if chef.has and chef.has('own_log') then chef.own_log('throwable_arcs') end
 local function log(fmt, ...) chef.log(fmt, ...) end
@@ -78,6 +78,7 @@ local trail = {}                 -- my feet: { t, x, y, z }, the last MOVE_OVER 
 
 local function update_trail()
   if not me then trail = {} return end
+  if trail.unit ~= me_unit then trail = { unit = me_unit } end
   local t = now()
   trail[#trail + 1] = { t, me[1], me[2], me[3] }
   while #trail > 2 and t - trail[2][1] >= MOVE_OVER do table.remove(trail, 1) end
@@ -558,9 +559,13 @@ local GRIP_VARIABLE = 'weapon_selected'
 -- (the variable's index per unit; not found, it is looked for again after GRIP_RETRY s)
 local GRIP_RETRY = 5
 local grip_index = setmetatable({}, { __mode = 'k' })
+local grip_frame = {}
 local function hand_pose()
   local u = me_unit
   if not (u and chef.unit_alive(u)) then return nil end
+  local t = now()
+  if grip_frame.u == u and grip_frame.t == t then return grip_frame.v end
+  grip_frame.u, grip_frame.t, grip_frame.v = u, t, nil
   local idx = grip_index[u]
   if idx == nil or (type(idx) == 'table' and now() >= idx.retry) then
     idx = { retry = now() + GRIP_RETRY }
@@ -574,9 +579,31 @@ local function hand_pose()
   if type(idx) ~= 'number' then return nil end
   local v = chef.call_kind('Unit.animation_get_variable', PLAYER, u, idx)
   v = type(v) == 'number' and math.floor(v + 0.5) or nil
+  grip_frame.v = v
   if v == C4_GRIP then c4_grip_at = now() end
   return v
 end
+
+-- Based on NarrowHUD 2.0.0's hand-relative grenade detection (12_throw.lua, attach_hand_r). The node is resolved
+-- once per Helldiver; a missing node is retried slowly. Position is current, cached only for this frame.
+local right_hand = (function()
+  local state = {}
+  return function()
+    if not (me_unit and chef.unit_node) then return nil end
+    local t = now()
+    if state.u ~= me_unit then state = { u = me_unit, next = 0 } end
+    if state.t == t then return state.p end
+    state.t, state.p = t, nil
+    if not state.node and t >= state.next then
+      state.node, state.next = chef.unit_node(me_unit, 'attach_hand_r'), t + GRIP_RETRY
+    end
+    if state.node then
+      local x, y, z = chef.unit_position(me_unit, state.node)
+      if x then state.p = { x, y, z } end
+    end
+    return state.p
+  end
+end)()
 
 local function read_c4(c)
   local right, left = aim_down, throw_down
@@ -823,7 +850,18 @@ local said_weapon = nil
 local held = nil                 -- { kind, unit }: kept while aiming lasts
 local function held_weapon(c)
   if not (weapon_watch and me) then return nil end
-  if held and chef.unit_alive(held.unit) then
+  local grip, hand = hand_pose(), right_hand()
+  if grip == 40 or grip == 41 or grip == 42 then
+    held, held_miss = nil, 'throwable hand pose'
+    return nil
+  end
+  local function near(u)
+    local x, y, z = chef.unit_position(u)
+    if not x or (x - me[1]) ^ 2 + (y - me[2]) ^ 2 >= HELD_NEAR * HELD_NEAR then return false end
+    -- Weapon roots are at the grip. Reject a slung/dropped/other player's weapon when the hand node is available.
+    return not hand or (x - hand[1]) ^ 2 + (y - hand[2]) ^ 2 + (z - hand[3]) ^ 2 <= 1
+  end
+  if held and chef.unit_alive(held.unit) and near(held.unit) then
     local fx, fy, fz = chef.unit_rotation(held.unit)
     if type(fx) == 'number' and fx * c.fx + fy * c.fy + fz * c.fz >= AIMING.HELD_KEEP then return held.kind, held.unit end
   end
@@ -831,8 +869,7 @@ local function held_weapon(c)
   local best, best_a
   for _, it in ipairs(weapon_watch.items) do
     if chef.unit_alive(it.unit) then
-      local x, y = chef.unit_position(it.unit)
-      if x and (x - me[1]) ^ 2 + (y - me[2]) ^ 2 < HELD_NEAR * HELD_NEAR then
+      if near(it.unit) then
         local fx, fy, fz = chef.unit_rotation(it.unit)
         local a = type(fx) == 'number' and fx * c.fx + fy * c.fy + fz * c.fz
         if a and (not best_a or a > best_a) then best, best_a = it, a end
@@ -1171,16 +1208,27 @@ local grenade = (function()
   end
 
   -- the grenade in my hand: its unit and kind, or nil
-  local function in_hand(skip)
+  local function close_to_hand(u, hand, x, y, z)
+    if not x then x, y, z = chef.unit_position(u) end
+    if not x then return false end
+    if hand then
+      return (x - hand[1]) ^ 2 + (y - hand[2]) ^ 2 + (z - hand[3]) ^ 2 <= 0.8 * 0.8
+    end
+    -- Compatibility fallback when the loader/model cannot expose the hand node. Pose still gates this below.
+    local d, up = (x - me[1]) ^ 2 + (y - me[2]) ^ 2, z - me[3]
+    return d < GRENADE_HAND * GRENADE_HAND and up >= GRENADE_LOW and up <= GRENADE_HIGH
+  end
+  local function in_hand(skip, hand, grip)
     if not (watch and me) then return nil end
+    if grip ~= nil and grip ~= 40 and grip ~= 41 and grip ~= 42 then return nil end
     local best, kind, bd
     for _, it in ipairs(watch.items) do
       if chef.unit_alive(it.unit) and not skip[it.unit] then
         local x, y, z = chef.unit_position(it.unit)
-        if x then
-          local d = (x - me[1]) ^ 2 + (y - me[2]) ^ 2
-          local up = z - me[3]
-          if d < GRENADE_HAND * GRENADE_HAND and up >= GRENADE_LOW and up <= GRENADE_HIGH and (not bd or d < bd) then
+        if x and close_to_hand(it.unit, hand, x, y, z) then
+          local h = hand or me
+          local d = (x - h[1]) ^ 2 + (y - h[2]) ^ 2 + (z - h[3]) ^ 2
+          if not bd or d < bd then
             best, kind, bd = it.unit, it.kind, d
           end
         end
@@ -1345,39 +1393,80 @@ local grenade = (function()
     persist()
   end
 
-  -- last frame's grenade in hand: its unit, kind, when and where. Thrown: it moves GRENADE_THROWN m/s or more (a cooking
-  -- hand swings it 6 at most: test.15-17), or it's gone from the hand and still there; left the hand: the frame before
-  local held, held_kind, held_t, held_p = nil, nil, 0, nil
+  -- Speed starts a possible flight, never confirms a release by itself. Keep drawing a fast-moving grenade still
+  -- beside the hand; only follow/learn it once it separates. Buffer early positions so confirmation doesn't shift
+  -- the measured release to the edge of the hand radius. A brief pose transition may precede physical separation.
+  local held, pending = nil, nil
   local flights, flying = {}, {}     -- grenades thrown: { u, kind, pts, pitch, mx, my, along, up, at, feet, hx, hy,
                                      -- left }; unit -> true while followed
-  local GRENADE_THROWN = 10
+  local context, last_grip, last_keys, refresh_at = nil, nil, false, 0
+  local said_hand = nil
+  local world_seen = nil
   local M2 = { on = true }
   function M2.stop() if watch then watch.stop() end end
   -- called every frame; free: nothing else is drawn. Returns the arc's points, or nil
   function M2.update(c, free)
     local t = now()
-    if held and not flying[held] and chef.unit_alive(held) and me then
-      local x, y, z = chef.unit_position(held)
-      local fast = x and held_p and t > held_t
-                   and math.sqrt((x - held_p[1]) ^ 2 + (y - held_p[2]) ^ 2 + (z - held_p[3]) ^ 2) / (t - held_t)
-                       >= GRENADE_THROWN
-      local u0 = in_hand(flying)
-      if x and (fast or u0 ~= held) then
-        local mx, my = my_move()
-        local fh = math.max(1e-6, math.sqrt(c.fx * c.fx + c.fy * c.fy))
-        flights[#flights + 1] = { u = held, kind = held_kind, pts = { { held_t, held_p[1], held_p[2], held_p[3] } },
-                                  pitch = math.deg(camera_pitch(c)), mx = mx, my = my,
-                                  along = (mx * c.fx + my * c.fy) / fh, up = speed_up(false), at = t,
-                                  feet = { me[1], me[2], me[3] }, hx = c.fx / fh, hy = c.fy / fh, left = held_t }
-        flying[held] = true
-      end
+    if context ~= me_unit or world_seen ~= chef.world_id() then
+      held, pending, flights, flying = nil, nil, {}, {}
+      context, world_seen, last_grip, last_keys, refresh_at = me_unit, chef.world_id(), nil, false, 0
+      said_hand = nil
     end
-    local u, kind = in_hand(flying)
-    held, held_kind, held_t = u, kind, t
-    held_p = nil
+    local grip = hand_pose()
+    local keys = chef.key_down('g') == true or throw_down or aim_down
+    local posed = grip == 40 or grip == 41 or grip == 42
+    local hand = (held or keys or posed or grip == nil) and right_hand() or nil
+    if watch and ((keys and not last_keys) or (posed and grip ~= last_grip)) and t >= refresh_at then
+      watch.refresh()                          -- asynchronous, not an immediate list; no per-frame full scans
+      refresh_at = t + 0.1
+    end
+    last_keys, last_grip = keys, grip
+    if held and me and chef.unit_alive(held.u) and t - held.seen <= 0.2 then
+      local x, y, z = chef.unit_position(held.u)
+      local fast = x and t > held.t and ((x - held.p[1]) ^ 2 + (y - held.p[2]) ^ 2 + (z - held.p[3]) ^ 2)
+                       / ((t - held.t) ^ 2) >= GRENADE_FAST * GRENADE_FAST
+      if fast and not pending then
+        pending = { u = held.u, kind = held.kind, pts = { { held.t, held.p[1], held.p[2], held.p[3] } },
+                    pitch = held.pitch, mx = held.mx, my = held.my, along = held.along, up = held.up,
+                    feet = { held.feet[1], held.feet[2], held.feet[3] }, hx = held.hx, hy = held.hy, left = held.t }
+      end
+      if fast and not close_to_hand(held.u, hand, x, y, z) then
+        pending.at = t
+        flights[#flights + 1], flying[held.u] = pending, true
+        log('grenade release: %s (separated from %s)', held.kind, hand and 'hand node' or 'feet fallback')
+        pending = nil
+      elseif fast then
+        pending.pts[#pending.pts + 1] = { t, x, y, z }
+        -- A long run/hand swing isn't an early free flight; retain a bounded candidate window.
+        if t - pending.left > GRENADE_SOON then pending = nil end
+      else
+        pending = nil
+      end
+    else
+      held, pending = nil, nil
+    end
+    local u, kind = in_hand(flying, hand, grip)
+    if u ~= said_hand then
+      said_hand = u
+      log('grenade hand: %s (pose %s, %s)', kind or 'none', tostring(grip), hand and 'hand node' or 'feet fallback')
+    end
     if u then
       local x, y, z = chef.unit_position(u)
-      if x then held_p = { x, y, z } end
+      if x then
+        if not held or held.u ~= u then held, pending = { u = u, kind = kind, p = {}, feet = {} }, nil end
+        local mx, my = my_move()
+        local fh = math.max(1e-6, math.sqrt(c.fx * c.fx + c.fy * c.fy))
+        held.t, held.seen, held.pitch = t, t, math.deg(camera_pitch(c))
+        held.p[1], held.p[2], held.p[3] = x, y, z
+        held.mx, held.my, held.along, held.up = mx, my, (mx * c.fx + my * c.fy) / fh, speed_up(false)
+        held.feet[1], held.feet[2], held.feet[3], held.hx, held.hy = me[1], me[2], me[3], c.fx / fh, c.fy / fh
+      end
+    elseif held and not flying[held.u] and chef.unit_alive(held.u) and me and close_to_hand(held.u, hand) then
+      -- Pending pose transition: update displacement samples, but do not extend its 0.2s grace or draw an arc.
+      local x, y, z = chef.unit_position(held.u)
+      held.t, held.p = t, { x, y, z }
+    else
+      held, pending = nil, nil
     end
     local keep = {}
     for _, f in ipairs(flights) do
@@ -1392,7 +1481,6 @@ local grenade = (function()
       end
     end
     flights = keep
-    local keys = chef.key_down('g') == true or throw_down or aim_down
     if u and keys and free and M2.on then return arc(c, u, kind) end
     return nil
   end
