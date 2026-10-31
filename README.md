@@ -68,6 +68,11 @@ Loader and enable both.
 
 ## Working on it
 
+Current completion work and validation boundaries: [DEVELOPMENT_STEPS.md](DEVELOPMENT_STEPS.md).
+`1.1.1-test.1` validates grenade calibration, preserves the first damaged save before recovery, and caches the
+calibration medians. It is an offline-checked test version; grenade hand/release identification and prone weapon
+arcs are still in progress. Existing stratagem/C4 behavior and the automatic learning feature are retained.
+
 ```bash
 python -m pip install lupa
 python tests/test_throwable_arcs.py

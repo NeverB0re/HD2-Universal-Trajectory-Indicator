@@ -9,7 +9,7 @@
 -- Transmog's catalog (Nexus 16633).
 local chef = ...
 local M = {}
-local VERSION = '1.1.0'
+local VERSION = '1.1.1-test.1'
 
 if chef.has and chef.has('own_log') then chef.own_log('throwable_arcs') end
 local function log(fmt, ...) chef.log(fmt, ...) end
@@ -1065,19 +1065,85 @@ local grenade = (function()
                              yaw = { 0 }, ahead = { 0.03, 0.09, 0.3 }, right = { 0.29, 0.31, 0.38 },
                              up = { 2.2, 2.24, 2.07 } },
   }
-  local saved = chef.load_table and chef.load_table(SAVE)
-  if type(saved) == 'table' and type(saved.known) == 'table' then
-    for kind, v in pairs(saved.known) do
-      if THROWABLES[kind] and type(v) == 'table' then
-        local k = {}
-        for _, field in ipairs(FIELDS) do
-          local l = {}
-          for _, x in ipairs(type(v[field]) == 'table' and v[field] or {}) do
-            if type(x) == 'number' then l[#l + 1] = x end
-          end
-          k[field] = l
+  -- Safety bounds, not fitted throw parameters. A backwards flight must not teach a forward aim (the old save
+  -- accepted an Impact at -168 degrees). Keep legitimate kinds free to learn different speeds/lifts; selection and
+  -- release timing need their own validation too. The 1000 m/s ceiling only guards numeric blow-ups, not game balance.
+  local function valid_value(field, x)
+    if type(x) ~= 'number' or x ~= x or x == math.huge or x == -math.huge then return false end
+    if field == 'speed' then return x > 0 and x <= 1000 end
+    if field == 'yaw' then return math.abs(x) < 90 end
+    if field == 'lift' or field == 'walk' then return math.abs(x) <= 90 end
+    if field == 'up' then return x >= 0 and x <= GRENADE_REACH end
+    return math.abs(x) <= GRENADE_REACH
+  end
+  -- Old saves have separate arrays with no sample ids. If any field is invalid, restoring that whole kind is safer
+  -- than combining unpaired remnants of a bad throw. Other kinds retain their valid calibration.
+  local function checked_row(v)
+    if type(v) ~= 'table' then return nil end
+    local k = {}
+    for _, field in ipairs(FIELDS) do
+      local list, out, count = v[field], {}, 0
+      if list ~= nil then
+        if type(list) ~= 'table' then return nil end
+        for i, x in pairs(list) do
+          if type(i) ~= 'number' or i < 1 or i % 1 ~= 0 or not valid_value(field, x) then return nil end
+          count = count + 1
         end
-        known[kind] = k
+        if count ~= #list then return nil end        -- sparse arrays must not hide an invalid tail
+        for i = math.max(1, count - GRENADE_KEEP + 1), count do out[#out + 1] = list[i] end
+      end
+      k[field] = out
+    end
+    if #k.speed == 0 then return nil end
+    if #k.ahead ~= #k.right or #k.ahead ~= #k.up then return nil end
+    for i, a in ipairs(k.ahead) do
+      if a * a + k.right[i] * k.right[i] > GRENADE_REACH * GRENADE_REACH then return nil end
+    end
+    return k
+  end
+  local can_save = true
+  local function persist()
+    if can_save and chef.save_table then
+      local ok, why = chef.save_table(SAVE, { known = known })
+      if not ok then log('grenade calibration: save failed (%s)', tostring(why)) end
+    end
+  end
+  do
+    local saved, load_error
+    if chef.load_table then saved, load_error = chef.load_table(SAVE) end
+    if saved == nil and load_error and load_error ~= 'none saved' then
+      -- The loader cannot give us the original bytes of an unreadable file to back up. Preserve it on disk.
+      can_save = false
+      log('grenade calibration: load failed (%s); original not overwritten', tostring(load_error))
+    end
+    local repair = saved ~= nil and (type(saved) ~= 'table' or type(saved.known) ~= 'table')
+    if type(saved) == 'table' and type(saved.known) == 'table' then
+      for kind, v in pairs(saved.known) do
+        if THROWABLES[kind] and not GUIDED[kind] then
+          local k = checked_row(v)
+          if k then
+            local seed = known[kind] or {}
+            for _, field in ipairs(FIELDS) do if #k[field] == 0 then k[field] = seed[field] or {} end end
+            known[kind] = k
+          else
+            repair = true
+            log('grenade calibration: invalid saved kind %s; using its defaults', kind)
+          end
+        end
+      end
+    end
+    if repair then
+      -- Back up BEFORE any write to the original name. An existing backup is retained across launches. If backup
+      -- fails (disk full, unavailable API), use safe values in memory and leave the original file alone this launch.
+      local backup = SAVE .. '_before_validation1'
+      local old = chef.load_table and chef.load_table(backup)
+      can_save = type(old) == 'table' and old.original ~= nil
+      if not can_save and chef.save_table then can_save = chef.save_table(backup, { original = saved }) == true end
+      if can_save then
+        log('grenade calibration: original preserved as %s; saving repaired values', backup)
+        persist()
+      else
+        log('grenade calibration: backup failed; repaired values stay in memory, original not overwritten')
       end
     end
   end
@@ -1090,6 +1156,18 @@ local grenade = (function()
     table.sort(s)
     local m = math.floor((#s + 1) / 2)
     return #s % 2 == 1 and s[m] or (s[m] + s[m + 1]) / 2
+  end
+
+  -- Calibrations change only at load/learn, not at render frequency. Sort at most nine samples once per change.
+  local cached = {}
+  local function values(kind)
+    local k = cached[kind]
+    if not k then
+      k = {}
+      for _, field in ipairs(FIELDS) do k[field] = median((known[kind] or {})[field]) end
+      cached[kind] = k
+    end
+    return k
   end
 
   -- the grenade in my hand: its unit and kind, or nil
@@ -1117,8 +1195,8 @@ local grenade = (function()
     local fh = math.sqrt(c.fx * c.fx + c.fy * c.fy)
     local hx, hy = 0, 1
     if fh > 1e-6 then hx, hy = c.fx / fh, c.fy / fh end
-    local k = known[kind] or {}
-    local ahead, right, up = median(k.ahead), median(k.right), median(k.up)
+    local k = values(kind)
+    local ahead, right, up = k.ahead, k.right, k.up
     local ox, oy, oz
     if ahead and right and up and me then
       ox, oy, oz = me[1] + hx * ahead + hy * right, me[2] + hy * ahead - hx * right, me[3] + up
@@ -1129,10 +1207,10 @@ local grenade = (function()
     end
     local mx, my = my_move()
     local along = mx * hx + my * hy
-    local yaw = math.rad(median(k.yaw) or 0)       -- (+: right)
+    local yaw = math.rad(k.yaw or 0)       -- (+: right)
     local dx, dy = hx * math.cos(yaw) + hy * math.sin(yaw), hy * math.cos(yaw) - hx * math.sin(yaw)
-    local s = (median(k.speed) or GRENADE_SPEED) * speed_up(false) + along
-    local lift = (math.abs(along) >= WALK and median(k.walk)) or median(k.lift) or GRENADE_LIFT
+    local s = (k.speed or GRENADE_SPEED) * speed_up(false) + along
+    local lift = (math.abs(along) >= WALK and k.walk) or k.lift or GRENADE_LIFT
     local drag = DRAG[kind] or 0
     local pitch = camera_pitch(c) + math.rad(lift)
     local vx, vy, vz = dx * s * math.cos(pitch), dy * s * math.cos(pitch), s * math.sin(pitch)
@@ -1238,6 +1316,12 @@ local grenade = (function()
   local function learn(f)
     if GUIDED[f.kind] then return end
     local s, lift, yaw, ahead, right, up = measure(f)
+    if s then
+      local sample = { speed = s, lift = lift, yaw = yaw, ahead = ahead, right = right, up = up }
+      for field, x in pairs(sample) do
+        if not valid_value(field, x) then s, lift = nil, 'invalid ' .. field; break end
+      end
+    end
     if not s then
       log('grenade %s thrown: not measured (%s; %d positions)', f.kind, lift or '?', #f.pts)
       return
@@ -1252,12 +1336,13 @@ local grenade = (function()
     remember(k.ahead, ahead)
     remember(k.right, right)
     remember(k.up, up)
+    cached[f.kind] = nil
     log('grenade %s thrown%s: %.1f m/s %+.1f deg up %+.1f right, from %.2f ahead %.2f right %.2f up; now %.1f m/s, '
         .. '%+.1f standing, %s walking, %+.1f right, from %.2f %.2f %.2f', f.kind, walking and ' walking' or '', s, lift,
         yaw, ahead, right, up, median(k.speed), median(k.lift) or GRENADE_LIFT,
         median(k.walk) and string.format('%+.1f', median(k.walk)) or '-', median(k.yaw), median(k.ahead),
         median(k.right), median(k.up))
-    if chef.save_table then chef.save_table(SAVE, { known = known }) end
+    persist()
   end
 
   -- last frame's grenade in hand: its unit, kind, when and where. Thrown: it moves GRENADE_THROWN m/s or more (a cooking

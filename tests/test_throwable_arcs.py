@@ -77,8 +77,15 @@ chef = {
   color = function(r, g, b, a) return { r, g, b, a } end,
   screen = function() return 1920, 1200 end,
   lights = function() return 0 end,
-  save_table = function(name, t) fake.saved[name] = t; return true end,
-  load_table = function(name) return fake.saved[name] end,
+  save_table = function(name, t)
+    fake.save_calls = (fake.save_calls or 0) + 1
+    if fake.save_fail_name == name then return false, 'test: disk full' end
+    fake.saved[name] = t; return true
+  end,
+  load_table = function(name)
+    if fake.load_fail_name == name then return nil, 'test: parse failed' end
+    return fake.saved[name]
+  end,
   title = function() end,
   TOP = 100000,
   option = function(id, spec)
@@ -260,6 +267,118 @@ class ArcTest(unittest.TestCase):
         self.fake["down"]["g"] = True
         self.frames(3)
         self.assertEqual(self.lines(), [])
+
+    def load_calibration(self, lua_data):
+        self.fake.saved["grenade_throws6"] = self.lua.execute(lua_data)
+        self.M = self.load()
+
+    def test_reversed_impact_save_is_backed_up_and_recovers_only_its_kind(self):
+        # The actual failure's values, independent of a player's AppData path.
+        self.load_calibration("""return { known = {
+          ['7686544f539bb9b7'] = { speed = {22.4, 11.282289459520273},
+            lift = {4.2, 36.294324305242611}, yaw = {-168.02903044072511},
+            ahead = {0.571565}, right = {0.529908}, up = {1.374827} },
+          ['46333fc9e3d4bd34'] = {speed = {17.2}, lift = {5}, yaw = {-2},
+            ahead = {.3}, right = {.2}, up = {1.8}} } }""")
+        backup = self.fake.saved["grenade_throws6_before_validation1"].original
+        repaired = self.fake.saved["grenade_throws6"].known
+        self.assertAlmostEqual(backup.known["7686544f539bb9b7"].yaw[1], -168.02903044072511)
+        self.assertAlmostEqual(repaired["7686544f539bb9b7"].speed[1], 22.4)
+        self.assertIsNone(repaired["7686544f539bb9b7"].speed[2])
+        self.assertAlmostEqual(repaired["46333fc9e3d4bd34"].speed[1], 17.2)
+        self.nade_in_hand("7686544f539bb9b7")
+        self.fake["down"]["g"] = True
+        self.frames(3)
+        self.assertGreater(self.lines()[0][3], self.lines()[0][0], "recovered Impact flies forward")
+        calls = self.fake.save_calls
+        self.M = self.load()
+        self.assertEqual(self.fake.save_calls, calls, "clean reloading does not rewrite either file")
+
+    def test_valid_calibration_is_retained_without_a_write(self):
+        self.load_calibration("""return { known = { ['7686544f539bb9b7'] = {
+          speed = {22}, lift = {5}, yaw = {2}, ahead = {.5}, right = {.3}, up = {1.6} } } }""")
+        self.assertIsNone(self.fake.save_calls)
+        self.assertAlmostEqual(self.fake.saved["grenade_throws6"].known["7686544f539bb9b7"].yaw[1], 2)
+
+    def test_bad_saved_numbers_and_shapes_restore_defaults(self):
+        for bad in ("0/0", "math.huge", "-math.huge", "'22'", "-1"):
+            with self.subTest(bad=bad):
+                self.load_calibration("return {known = {['7686544f539bb9b7'] = {speed = {%s}}}}" % bad)
+                self.assertAlmostEqual(self.fake.saved["grenade_throws6"].known["7686544f539bb9b7"].speed[1], 22.4)
+        for data in ("{speed = {[2] = 22}}", "{speed = {22}, yaw = 'bad'}",
+                     "{speed = {22}, ahead = {3}, right = {3}, up = {1}}",
+                     "{speed = {22}, ahead = {.3}}", "{speed = {}}"):
+            with self.subTest(data=data):
+                self.load_calibration("return {known = {['7686544f539bb9b7'] = %s}}" % data)
+                self.assertAlmostEqual(self.fake.saved["grenade_throws6"].known["7686544f539bb9b7"].speed[1], 22.4)
+
+    def test_calibration_recovery_does_not_replace_an_existing_backup(self):
+        self.fake.saved["grenade_throws6_before_validation1"] = self.lua.execute("return {original = {marker = 'first'}}")
+        self.load_calibration("return {known = {['7686544f539bb9b7'] = {speed = {0}}}}")
+        self.assertEqual(self.fake.saved["grenade_throws6_before_validation1"].original.marker, "first")
+
+    def test_calibration_backup_failure_leaves_original_file_untouched(self):
+        self.fake.save_fail_name = "grenade_throws6_before_validation1"
+        self.load_calibration("return {known = {['7686544f539bb9b7'] = {speed = {0}, yaw = {-168}}}}")
+        self.assertEqual(self.fake.saved["grenade_throws6"].known["7686544f539bb9b7"].yaw[1], -168)
+        self.assertIn("original not overwritten", self.logs())
+        nade = self.nade_in_hand("7686544f539bb9b7")
+        self.fake["down"]["g"] = True
+        self.frames(3)
+        self.assertGreater(self.lines()[0][3], self.lines()[0][0])
+        self.fake["down"]["g"] = False
+        self.throw_nade(nade, 22)
+        self.assertEqual(self.fake.saved["grenade_throws6"].known["7686544f539bb9b7"].yaw[1], -168,
+                         "later learning must not overwrite a file whose backup failed")
+
+    def test_malformed_calibration_root_is_preserved_before_repair(self):
+        self.load_calibration("return {known = 'damaged'}")
+        self.assertEqual(self.fake.saved["grenade_throws6_before_validation1"].original.known, "damaged")
+        self.assertAlmostEqual(self.fake.saved["grenade_throws6"].known["7686544f539bb9b7"].speed[1], 22.4)
+
+    def test_an_unreadable_calibration_is_not_overwritten_by_later_learning(self):
+        self.fake.saved["grenade_throws6"] = "unreadable original bytes"
+        self.fake.load_fail_name = "grenade_throws6"
+        self.M = self.load()
+        self.assertIn("load failed (test: parse failed); original not overwritten", self.logs())
+        nade = self.nade_in_hand("7686544f539bb9b7")
+        self.fake["down"]["g"] = True
+        self.frames(3)
+        self.fake["down"]["g"] = False
+        self.throw_nade(nade, 22)
+        self.assertEqual(self.fake.saved["grenade_throws6"], "unreadable original bytes")
+        self.assertIsNone(self.fake.save_calls)
+
+    def test_a_backwards_flight_cannot_become_a_forward_aims_calibration(self):
+        nade = self.nade_in_hand("7686544f539bb9b7")
+        self.fake["down"]["g"] = True
+        self.frames(3)
+        self.fake["down"]["g"] = False
+        self.throw_nade(nade, -18)
+        self.assertIsNone(self.fake.saved["grenade_throws6"])
+        self.assertIn("not measured (invalid yaw", self.logs())
+
+    def test_grenade_medians_are_cached_until_an_accepted_throw(self):
+        self.lua.execute("""local sort = table.sort; sort_count = 0
+          table.sort = function(t, ...) sort_count = sort_count + 1; return sort(t, ...) end""")
+        nade = self.nade_in_hand("db922a7afc42894b")
+        self.fake["down"]["g"] = True
+        self.frames(3)
+        count = self.lua.globals().sort_count
+        self.assertGreater(count, 0)
+        self.frames(120)
+        self.assertEqual(self.lua.globals().sort_count, count, "no sorting at render frequency")
+        self.fake["down"]["g"] = False
+        self.throw_nade(nade, 18)
+        after_learning = self.lua.globals().sort_count
+        nade.dead = True
+        self.nade_in_hand("db922a7afc42894b")
+        self.fake["down"]["g"] = True
+        self.frames(3)
+        self.assertGreater(self.lua.globals().sort_count, after_learning, "accepted learning invalidates the cache")
+        refreshed = self.lua.globals().sort_count
+        self.frames(120)
+        self.assertEqual(self.lua.globals().sort_count, refreshed)
 
     def test_the_arc_starts_where_the_ball_is_let_go_and_goes_on_below_my_feet(self):
         self.aim(10)
