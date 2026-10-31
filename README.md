@@ -69,11 +69,11 @@ Loader and enable both.
 ## Working on it
 
 Current completion work and validation boundaries: [DEVELOPMENT_STEPS.md](DEVELOPMENT_STEPS.md).
-`1.1.1-test.2` includes calibration recovery and cached medians from test.1, plus hand-node grenade identification,
-confirmed separation before learning a throw, and revalidation of cached weapons. This is an offline-checked test
-version: actual hand/release behavior still needs the focused game check, and prone weapon arcs and grenade flight
-accuracy remain in progress. Existing stratagem/C4 behavior and automatic learning are retained. Reference findings
-and source links are in [REFERENCE_FINDINGS.md](REFERENCE_FINDINGS.md).
+`1.1.1-test.3` adds per-kind native launch profiles, hand-relative release offsets, matching draw/learn movement
+equations, release-time correction, grenade armour initialization, and bounded flight comparisons. Giga display
+was confirmed by the user in test.2; the new accuracy model still needs the focused check in
+[GRENADE_MODEL.md](GRENADE_MODEL.md). Prone weapon arcs remain in progress. Existing stratagem/C4 behavior and
+automatic learning are retained. Reference findings are in [REFERENCE_FINDINGS.md](REFERENCE_FINDINGS.md).
 
 ```bash
 python -m pip install lupa
@@ -82,6 +82,10 @@ python build.py
 ```
 
 ## Credits
+
+- Uses code / research from **HD2Runtime by SkyeShade** (https://github.com/SkyeShade/HD2Runtime): per-kind grenade
+  launch calibration, native strength equation and resource identities. Its runtime is not bundled. Provenance,
+  empirical transfer and accuracy boundaries are documented in [GRENADE_MODEL.md](GRENADE_MODEL.md).
 
 - C4's mode and the hand pose are read the way **NarrowHUD** by luka189 reads them (Nexus 17882,
   https://github.com/luka189/NarrowHUD): the C4's network object type and option field names, and the

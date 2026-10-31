@@ -21,6 +21,7 @@ import png_rgba  # noqa: E402
 SOURCE = os.path.join(HERE, "src", "throwable_arcs.lua")
 ARMOUR = os.path.join(HERE, "src", "armour_table.lua")
 WEAPON_TYPES = os.path.join(HERE, "src", "weapon_types.lua")
+GRENADE_PROFILES = os.path.join(HERE, "src", "grenade_profiles.lua")
 ICONS = {"deploy": os.path.join(HERE, "src", "c4_deploy.png"), "detonate": os.path.join(HERE, "src", "c4_detonate.png")}
 ICON_SIZES = (24, 32, 48, 76)    # px: the icon is drawn 26-52 px tall (1080p to 4K), and the UI has no mipmaps
 DIST = os.path.join(HERE, "dist")
@@ -53,13 +54,16 @@ def built_source():
         armour = f.read()
     with open(WEAPON_TYPES, encoding="utf-8") as f:
         weapon_types = f.read()
-    for slot in ('"@ARMOUR@"', '"@ICONS@"', '"@WEAPON_TYPES@"'):
+    with open(GRENADE_PROFILES, encoding="utf-8") as f:
+        grenade_profiles = f.read()
+    for slot in ('"@ARMOUR@"', '"@ICONS@"', '"@WEAPON_TYPES@"', '"@GRENADE_PROFILES@"'):
         if source.count(slot) != 1:
             raise SystemExit("throwable_arcs.lua has no single %s slot" % slot)
     icons = ", ".join("%s = { %s }" % (mode, ", ".join("%d, '%016x'" % (n, icon_id(mode, n)) for n in ICON_SIZES))
                       for mode in sorted(ICONS))
     return (source.replace('"@ARMOUR@"', "(function()\n" + armour + "end)()").replace('"@ICONS@"', "{ %s }" % icons)
-            .replace('"@WEAPON_TYPES@"', "(function()\n" + weapon_types + "end)()"))
+            .replace('"@WEAPON_TYPES@"', "(function()\n" + weapon_types + "end)()")
+            .replace('"@GRENADE_PROFILES@"', "(function()\n" + grenade_profiles + "end)()"))
 
 
 # Parts adapted from Chef Shared Loader by Th3chef (tools/hd2_patch.py: texture_rgba_header, write_lua_archive)

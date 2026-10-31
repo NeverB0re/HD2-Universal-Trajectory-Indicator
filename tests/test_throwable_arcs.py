@@ -344,7 +344,8 @@ class ArcTest(unittest.TestCase):
                 self.frames(3)
                 self.assertGreater(len(self.lines()), 20)
 
-    def test_putting_a_grenade_away_does_not_start_a_flight(self):
+    def test_unexpected_pose_change_without_separation_does_not_start_a_flight(self):
+        # Defensive state-transition fixture, not an action possible while holding G in the actual game.
         self.right_hand_at()
         self.hand_pose(41)
         self.nade_in_hand("7686544f539bb9b7")
@@ -406,6 +407,135 @@ class ArcTest(unittest.TestCase):
                 row = self.fake.saved["grenade_throws6"].known["7686544f539bb9b7"]
                 self.assertAlmostEqual(row.speed[2], 22, delta=.5)
                 self.assertAlmostEqual(row.ahead[1], .3, delta=.05)
+                self.assertAlmostEqual(row.lift[2], 5, delta=.001,
+                                       msg="vertical velocity must be restored to the release time")
+
+    def test_walking_throw_learning_inverts_the_native_strength_model(self):
+        for fps in (30, 60, 120):
+            with self.subTest(fps=fps):
+                self.setUp()
+                self.right_hand_at()
+                self.hand_pose(41)
+                nade = self.nade_in_hand("7686544f539bb9b7")
+                self.fake.look(25)
+                self.fake["down"]["g"] = True
+                for _ in range(fps // 2):
+                    self.fake.me.x += 2.2 / fps
+                    nade.x = self.fake.me.x + .3
+                    self.fake.me.nodes[7][1] = nade.x
+                    self.frames(1, 1 / fps)
+                start = nade.x
+                self.fake["down"]["g"] = False
+                # Native authored curve: +0.4 strength over a 19.9m calibration span adds 143.28 to speed^2.
+                launched = math.sqrt(22 * 22 + 143.28)
+                vx, vz = launched * math.cos(math.radians(30)), launched * math.sin(math.radians(30))
+                for i in range(1, 3 * fps + 1):
+                    t = i / fps
+                    self.fake.me.x += 2.2 / fps
+                    self.fake.me.nodes[7][1] = self.fake.me.x + .3
+                    nade.x, nade.z = start + vx * t, 1.5 + vz * t - 4.905 * t * t
+                    self.frames(1, 1 / fps)
+                row = self.fake.saved["grenade_throws6"].known["7686544f539bb9b7"]
+                self.assertAlmostEqual(row.speed[2], 22, delta=.001)
+                self.assertAlmostEqual(row.walk[1], 5, delta=.001)
+
+    def test_grenade_only_play_initializes_armour_and_does_not_scan_each_frame(self):
+        self.wear("SA-25 Steel Trooper")
+        nade = self.nade_in_hand("7686544f539bb9b7")
+        self.fake["down"]["g"] = True
+        self.frames(3)
+        self.assertIn("throw range +30%", self.logs())
+        scans = self.fake.calls["World.units"]
+        self.frames(120)
+        self.assertEqual(self.fake.calls["World.units"], scans)
+        self.fake["down"]["g"] = False
+        self.throw_nade(nade, 22)
+        self.assertIn("bonus=1.200", self.logs(), "uses the existing measured perk factor; no retuning here")
+
+    def test_failed_grenade_armour_lookup_is_rate_limited(self):
+        self.nade_in_hand("7686544f539bb9b7")
+        self.fake["down"]["g"] = True
+        self.frames(240)
+        self.assertEqual(self.fake.calls["World.units"], 1)
+
+    def test_comparison_trace_is_bounded_and_written_once_after_a_throw(self):
+        nade = self.nade_in_hand("7686544f539bb9b7")
+        self.fake["down"]["g"] = True
+        self.frames(60)
+        self.assertNotIn("grenade compare:", self.logs())
+        self.fake["down"]["g"] = False
+        self.throw_nade(nade, 22)
+        rows = [l for l in self.logs().splitlines() if "grenade compare:" in l]
+        self.assertEqual(len(rows), 1)
+        row = rows[0]
+        self.assertIn("preview_age=0.0000", row)
+        self.assertIn("along=0.0000 bonus=1.000", row)
+        self.assertGreater(len(row.split("samples=")[1].split(";")), 5)
+        self.assertLessEqual(len(row.split("samples=")[1].split(";")), 16)
+        self.frames(120)
+        self.assertEqual(self.logs().count("grenade compare:"), 1)
+
+    def test_native_profiles_cover_the_catalogue_and_preserve_distinct_curves(self):
+        path = os.path.join(HERE, '..', 'src', 'grenade_profiles.lua')
+        with open(path, encoding='utf-8') as f:
+            profiles = self.lua.execute(f.read())
+        native = [p for p in profiles.values() if p[2] is not None]
+        self.assertEqual(len(native), 23)
+        self.assertEqual(profiles['6b11fc757618c57e'][2], 20)
+        self.assertEqual(profiles['46333fc9e3d4bd34'][2], 11)
+        self.assertEqual(profiles['ee4c107b941ab7f4'][2], 4.5)
+        self.assertEqual(profiles['a20683199dfc19e8'][2], 4)
+        self.assertEqual(profiles['1b9ac59697006337'][2], 4)
+        self.assertEqual(profiles['2968deba6d6c2f09'].measured, 10)
+        watches = [w for w in self.fake.watches.values() if w.kinds['7686544f539bb9b7']]
+        for kind in profiles.keys():
+            self.assertTrue(watches[0].kinds[kind], kind)
+
+    def test_unlearned_kinds_use_authored_curve_families_instead_of_one_generic_speed(self):
+        # Existing standard measurement transfers the caller strength; native 4m curves predict ~10m/s, not 21.
+        for kind, expected in (('3fa94f58f596bc0b', 22.4), ('1b9ac59697006337', 9.9928),
+                               ('a20683199dfc19e8', 9.9928), ('2968deba6d6c2f09', 10)):
+            with self.subTest(kind=kind):
+                self.setUp()
+                self.right_hand_at()
+                self.hand_pose(41)
+                self.fake.look(30)
+                self.nade_in_hand(kind)
+                self.fake['down']['g'] = True
+                self.frames(3)
+                line = self.lines()[1]            # centre strand: no width offset
+                speed = (line[3] - line[0]) / .03 / math.cos(math.radians(35))
+                self.assertAlmostEqual(speed, expected, delta=.02)
+
+    def test_grenade_origin_follows_the_actual_low_hand_despite_legacy_standing_samples(self):
+        self.load_calibration("""return {known = {['46333fc9e3d4bd34'] = {
+          speed={16.8}, lift={5}, ahead={.2}, right={.3}, up={1.9},
+          offset_ahead={.1}, offset_right={.2}, offset_up={.3} }}}""")
+        self.right_hand_at()
+        self.hand_pose(42)
+        nade = self.nade_in_hand('46333fc9e3d4bd34')
+        self.fake['down']['g'] = True
+        self.frames(3)
+        standing = self.lines()[1]
+        nade.z = .05
+        self.fake.me.nodes[7][3] = .05
+        self.frames(1)
+        prone = self.lines()[1]
+        self.assertAlmostEqual(standing[2] - prone[2], 1.45, delta=.001)
+        self.assertAlmostEqual(prone[1], -.5, delta=.001)
+
+    def test_a_measured_release_is_saved_relative_to_the_held_object(self):
+        self.right_hand_at()
+        self.hand_pose(41)
+        nade = self.nade_in_hand('7686544f539bb9b7')
+        self.fake['down']['g'] = True
+        self.frames(3)
+        self.fake['down']['g'] = False
+        self.throw_nade(nade, 22)
+        row = self.fake.saved['grenade_throws6'].known['7686544f539bb9b7']
+        self.assertAlmostEqual(row.offset_ahead[1], 0, delta=.001)
+        self.assertAlmostEqual(row.offset_right[1], 0, delta=.001)
+        self.assertIsNotNone(row.offset_up[1])
 
     def test_weapon_cache_is_revalidated_after_the_weapon_leaves_me(self):
         gun = self.weapon_in_hand(self.GL)
@@ -439,8 +569,8 @@ class ArcTest(unittest.TestCase):
         self.assertGreater(len(self.lines()), 20)
         self.assertIn("weapon aimed: none (throwable hand pose)", self.logs())
         self.assertIn("grenade hand: 7686544f539bb9b7", self.logs())
-        self.assertAlmostEqual(self.lines()[0][1], -.1, delta=.02,
-                               msg="grenade's hand offset, not the gun's y=-.2 muzzle")
+        self.assertAlmostEqual(self.lines()[0][1], -.3, delta=.02,
+                               msg="current held grenade, not the gun's y=-.2 muzzle")
 
     def test_hand_node_lookup_and_pose_reads_are_bounded(self):
         self.right_hand_at()
@@ -1433,6 +1563,21 @@ class ArcTest(unittest.TestCase):
         self.frames(3)
         self.assertEqual(self.lines(), [])
         self.assertIn("weapon aimed lying prone: not drawn", self.logs())
+
+    def test_prone_weapon_diagnostic_is_one_state_change_not_two_lines_per_frame(self):
+        gun = self.weapon_in_hand(self.GL)
+        gun.z = .4
+        self.fake['mouse']['right'] = True
+        self.frames(120)
+        self.assertEqual(self.logs().count('weapon aimed lying prone: not drawn'), 1)
+
+    def test_varying_weapon_alignment_diagnostics_are_rate_limited(self):
+        gun = self.weapon_in_hand(self.GL, f=(.1, .99, 0))
+        self.fake['mouse']['right'] = True
+        for i in range(120):
+            gun.f[1] = .1 + i * .001
+            self.frames(1)
+        self.assertLessEqual(self.logs().count('weapon aimed: none'), 5)
 
     def test_a_worn_weapon_draws_nothing(self):
         self.weapon_in_hand(self.GL, f=(0, 0, -1))      # on my back, pointing down
