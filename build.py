@@ -139,6 +139,7 @@ def build():
     with open(os.path.join(out_dir, "manifest.json"), "w", encoding="utf-8") as f:
         json.dump(MANIFEST, f, indent=2)
         f.write("\n")
+    shutil.copyfile(os.path.join(HERE, "THIRD_PARTY_NOTICES.txt"), os.path.join(out_dir, "THIRD_PARTY_NOTICES.txt"))
     zip_path = out_dir + ".zip"
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as z:
         for base, _dirs, files in os.walk(out_dir):

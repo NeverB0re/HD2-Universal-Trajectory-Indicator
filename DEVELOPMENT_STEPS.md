@@ -31,4 +31,8 @@ Branch: `fix/grenade-calibration-validation` (based on `17a134b`).
 
 Validation: 80/80 main Lua 5.1 fake-loader tests passed, including the recorded Impact failure, preserving another kind, malformed numbers/arrays, backup and parse failures, existing backup retention, reversed-flight rejection and cache invalidation. This does not validate real hand animations, actual game persistence, runtime performance or final grenade accuracy.
 
+The actual local `grenade_throws6` data was also replayed through the fake loader: Impact recovered, Giga calibration retained, and the live file's SHA256 remained unchanged. This was read-only replay, not a game run.
+
+Test package: `test-builds/Stratagem and C4 Trajectory v1.1.1-test.1.zip`. CRC and embedded source match were checked. The builder now includes `THIRD_PARTY_NOTICES.txt` verbatim in the ZIP (a separate packaging fix). The ZIP has not been installed or runtime-verified; it is not copied into `release/`.
+
 No game experiment is requested for step 1 alone: the data defect and cache behavior are reproducible offline. The current hand/release and prone problems still need the later milestones. Do not treat the test ZIP as a stable release or overwrite the user's live AppData during development.
