@@ -53,7 +53,10 @@ chef = {
   camera = function() return fake.cam end,
   unit_alive = function(u) return u.dead ~= true end,
   unit_kind = function(u) return u.kind end,
-  unit_rotation = function(u) if u.f then return u.f[1], u.f[2], u.f[3], 0 end end,
+  unit_rotation = function(u, node)
+    local f = node and u.node_f and u.node_f[node] or u.f
+    if f then return f[1], f[2], f[3], 0 end
+  end,
   unit_position = function(u, node)
     if u.kind == '46cab355bd8d4d37' then error('NATIVE CRASH: asked a runtime-built unit') end
     if node and u.nodes and u.nodes[node] then
@@ -1661,6 +1664,76 @@ class ArcTest(unittest.TestCase):
             positions[12] = self.lua.table_from(sight)
             names['sight'] = 12
         gun.nodes, gun.named_nodes = self.lua.table_from(positions), self.lua.table_from(names)
+
+    def direction_watch(self):
+        return next(w for w in self.fake.watches.values() if w.kinds['a6cd8a90185b6567'])
+
+    def test_weapon_direction_probe_is_idle_without_a_shot(self):
+        self.weapon_in_hand(self.GL)
+        self.fake['mouse']['right'] = True
+        self.frames(120)
+        self.assertFalse(self.direction_watch().active)
+        self.assertEqual(self.direction_watch().lists, 0)
+        self.assertNotIn('weapon direction', self.logs())
+
+    def test_weapon_direction_probe_records_distinct_muzzle_rotation_without_changing_arc(self):
+        gun = self.weapon_in_hand(self.GL)
+        self.weapon_nodes(gun, (2.238, -.2, 1.296))
+        gun.node_f = self.lua.table_from({11: self.lua.table_from((.99, .1, 0))})
+        self.fake['mouse']['right'] = True
+        self.frames(2)
+        before = self.lines()
+        self.fake['mouse']['left'] = True
+        self.frames(1)
+        self.assertEqual(before, self.lines())
+        self.assertIn('muzzle-forward 0.990000 0.100000 0.000000', self.logs())
+        self.assertIn('root-forward 1.000000 0.000000 0.000000', self.logs())
+        self.assertIn('predicted-velocity', self.logs())
+        self.assertTrue(self.direction_watch().active)
+        self.frames(25)
+        self.assertFalse(self.direction_watch().active)
+        self.assertEqual(self.logs().count(' shot t='), 1, 'holding the trigger is one bounded window')
+
+    def test_weapon_direction_probe_tracks_candidate_then_stops(self):
+        self.weapon_in_hand(self.GL)
+        self.fake['mouse']['right'] = True
+        self.frames(2)
+        self.fake['mouse']['left'] = True
+        self.frames(1)
+        bullet = self.add_unit('a6cd8a90185b6567', 3, -.2, 1.3)
+        self.frames(1)
+        bullet.x = 6
+        self.frames(3)
+        self.assertIn('association unverified', self.logs())
+        self.assertIn('track=1', self.logs())
+        self.frames(30)
+        scans = self.direction_watch().lists
+        self.frames(30)
+        self.assertEqual(self.direction_watch().lists, scans)
+        self.M.shutdown()
+        self.assertTrue(self.fake.watch_stopped)
+
+    def test_weapon_direction_probe_has_a_session_budget(self):
+        self.weapon_in_hand(self.GL)
+        self.fake['mouse']['right'] = True
+        self.frames(2)
+        for _ in range(12):
+            self.fake['mouse']['left'] = True
+            self.frames(25)
+            self.fake['mouse']['left'] = False
+            self.frames(1)
+        self.assertEqual(self.logs().count(' shot t='), 9)
+        self.assertFalse(self.direction_watch().active)
+
+    def test_weapon_direction_probe_cancels_on_world_change(self):
+        self.weapon_in_hand(self.GL)
+        self.fake['mouse']['right'] = True
+        self.frames(2)
+        self.fake['mouse']['left'] = True
+        self.frames(1)
+        self.lua.execute('chef.world_id = function() return 99 end')
+        self.frames(1)
+        self.assertFalse(self.direction_watch().active)
 
     def test_weapon_arc_starts_at_the_animated_muzzle_node_instead_of_fixed_offset(self):
         gun = self.weapon_in_hand(self.GL)

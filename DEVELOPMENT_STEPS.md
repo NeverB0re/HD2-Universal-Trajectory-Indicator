@@ -15,7 +15,7 @@
 1. **Calibration safety (implemented offline, runtime unverified):** validate loaded and newly learned grenade values; recover an invalid kind without discarding other valid kinds; preserve the original data before repair; cache medians outside the frame loop.
 2. **Equipment and release identification (implemented offline; focused runtime check pending):** invalidate stale weapons; distinguish hand movement from release; refresh candidates on grenade input/pose transitions. Reference research found a hand node, but no proven direct local-avatar unit mapping. Multiplayer identity and actual quick-throw detection remain validation limits.
 3. **Grenade trajectory accuracy:** align camera/feet/velocity snapshots to release time, fix the known time-reference error, use the current pose for release origin, initialize armour for grenades and verify perk factors. Reject inconsistent measurements before they become calibration. Retain learning rather than removing it without discussion.
-4. **Weapon muzzle and prone arcs (test.5 implemented offline, runtime pending):** the user moved to this milestone on 2026-11-01 after reporting that grenade arcs fit well. Use the installed assets' actual muzzle nodes, remove height-based prone suppression, and distinguish close third-person cameras from first person. Current evidence and targeted test are in `WEAPON_MUZZLES.md`.
+4. **Weapon muzzle and prone arcs (test.5 origin/prone confirmed, direction regression; test.6 diagnostics):** the user moved to this milestone on 2026-11-01 after reporting that grenade arcs fit well. Use the installed assets' actual muzzle nodes, remove height-based prone suppression, and distinguish close third-person cameras from first person. Current evidence and targeted test are in `WEAPON_MUZZLES.md`.
 5. **Coverage and distribution:** compare the supported weapon/throwable list with the current roster/data; complete missing supported behavior; reduce diagnostic I/O; package notices; document actual limitations.
 6. **Runtime acceptance:** standing/crouching/prone, movement, armour, swapping weapons/grenades, host/client, key rebinding/controllers, respawn and persistent-data recovery. Release/push after the milestone passes, not merely after unit tests.
 
@@ -110,3 +110,12 @@ Validation: 119/119 main Lua 5.1 fake-loader tests passed, including actual-asse
 for all 16 weapons and the prior grenade regression fixtures. ZIP source/notice checks are required before delivery.
 No real-game test.5 run, accuracy/FPS claim or remote push. Next check uses one currently equipped weapon through
 standing/crouching/prone and first-/third-person view, plus a standing/prone shot when practical.
+
+
+## Step 4 runtime follow-up: 1.1.1-test.6
+
+The user confirmed test.5 muzzle alignment and prone availability, but reported leftward shot-direction error,
+stronger standing/crouched. Keep the successful geometry. Test.6 adds a bounded passive shot-vector/projectile
+recording window to distinguish direction/calibration/selection effects before changing aim math. It is a diagnostic
+build, not an accuracy fix. See WEAPON_MUZZLES.md for limits and the six-shot one-weapon check. All 124 offline
+Lua 5.1 tests pass; runtime accuracy remains unresolved. No remote push.

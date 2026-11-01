@@ -9,7 +9,7 @@
 -- Transmog's catalog (Nexus 16633).
 local chef = ...
 local M = {}
-local VERSION = '1.1.1-test.5'
+local VERSION = '1.1.1-test.6'
 
 if chef.has and chef.has('own_log') then chef.own_log('throwable_arcs') end
 local function log(fmt, ...) chef.log(fmt, ...) end
@@ -1003,6 +1003,84 @@ local function weapon_aim(c, kind, u, turning)
   return { math.rad(wyaw - off[1]), math.rad(wpitch - off[2]) }
 end
 
+-- Temporary test.6 direction evidence. Never changes the aim/calibration. At most nine trigger presses per load;
+-- the existing loader watch scans only during each 0.35s sample window, never continuously while aiming.
+local weapon_diagnostic = (function()
+  local rounds = {
+    ['02eecd0b1fa49630'] = 'a6cd8a90185b6567', ['fe3b29b2cfa63f9b'] = 'a6cd8a90185b6567',
+    ['9eb160830321bfd6'] = 'b3bf071f477fc155', ['f49227a0630a3f7f'] = '8f063c5d3929316e',
+    ['e91f569c2ad8af01'] = 'ccf18b6315a3d67f', ['26e40437ea275296'] = '36ab9a3dcae3d562',
+  }
+  local kinds = {}; for _, k in pairs(rounds) do kinds[k] = true end
+  local watch = chef.watch and chef.watch(kinds, 0.05)
+  if watch then watch.pause() end
+  local previous, count, sample = false, 0, nil
+  local function vector(label, x, y, z)
+    if type(x) == 'number' and type(y) == 'number' and type(z) == 'number' then
+      log('weapon direction %d %s %.6f %.6f %.6f', count, label, x, y, z)
+    end
+  end
+  return {
+    update = function(c, w, muzzle, aim, u, kind)
+      local down, t = chef.mouse_down('left') == true, now()
+      if down and not previous and w and muzzle and count < 9 then
+        count = count + 1
+        local mx, my = my_move()
+        log('weapon direction %d shot t=%.6f world=%s kind=%s hand=%s root-height=%.4f',
+            count, t, tostring(chef.world_id()), kind, tostring(hand_pose()),
+            select(3, chef.unit_position(u)) - (feet_z or c.z))
+        vector('camera-position', c.x, c.y, c.z)
+        vector('camera-forward', c.fx, c.fy, c.fz)
+        vector('root-position', chef.unit_position(u))
+        vector('root-forward', chef.unit_rotation(u))
+        local nodes = weapon_nodes(u, w)
+        if nodes.muzzle then vector('muzzle-forward', chef.unit_rotation(u, nodes.muzzle)) end
+        vector('muzzle-position', muzzle[1], muzzle[2], muzzle[3])
+        local x, y, z, vx, vy, vz = launch(c, w, mx, my, aim, muzzle)
+        vector('predicted-velocity', vx, vy, vz)
+        vector('player-velocity', mx, my, 0)
+        local off = aim_off[kind] or AIM_OFF
+        log('weapon direction %d offset-deg %.6f %.6f', count, off[1], off[2])
+        if watch then
+          local seen = setmetatable({}, { __mode = 'k' })
+          for _, it in ipairs(watch.items) do seen[it.unit] = true end
+          sample = { at = t, world = chef.world_id(), kind = rounds[kind], origin = muzzle,
+                     seen = seen, tracks = {}, next = 0 }
+          if sample.kind then watch.resume(); watch.refresh() else sample = nil; watch.pause() end
+        end
+      end
+      previous = down
+      if not sample then return end
+      if t - sample.at > 0.35 or sample.world ~= chef.world_id() then
+        log('weapon direction %d sample-end candidates=%d', count, #sample.tracks)
+        watch.pause(); sample = nil; return
+      end
+      for _, it in ipairs(watch.items) do
+        if it.kind == sample.kind and not sample.seen[it.unit] and chef.unit_alive(it.unit) then
+          sample.seen[it.unit] = true
+          local x, y, z = chef.unit_position(it.unit)
+          local o = sample.origin
+          if x and (x - o[1]) ^ 2 + (y - o[2]) ^ 2 + (z - o[3]) ^ 2 < 20 * 20 and #sample.tracks < 3 then
+            sample.tracks[#sample.tracks + 1] = it.unit
+            log('weapon direction %d candidate %d kind=%s; association unverified', count, #sample.tracks, it.kind)
+          end
+        end
+      end
+      if t >= sample.next then
+        sample.next = t + 0.02
+        for i, unit in ipairs(sample.tracks) do
+          if chef.unit_alive(unit) then
+            local x, y, z = chef.unit_position(unit)
+            if x then log('weapon direction %d track=%d dt=%.6f position=%.6f %.6f %.6f',
+                          count, i, t - sample.at, x, y, z) end
+          end
+        end
+      end
+    end,
+    stop = function() if watch then watch.stop() end end,
+  }
+end)()
+
 -- one WEAPON_STEP of a round's flight
 local function fly(w, px, py, pz, vx, vy, vz)
   local d = WEAPON_K * w[3] * math.sqrt(vx * vx + vy * vy + vz * vz) * WEAPON_STEP
@@ -1831,6 +1909,7 @@ function M.update(dt)
     local turn, nod = camera_turn(c)
     aim = weapon_aim(c, weapon_kind, weapon_unit, math.sqrt(turn * turn + nod * nod) >= AIMING.STILL_TURN)
   end
+  weapon_diagnostic.update(c, weapon, muzzle, aim, weapon_unit, weapon_kind)
   local nade = grenade.update(c, not (aiming or c4_aim or h or weapon))
   cam_was = { now(), math.atan2(c.fy, c.fx), camera_pitch(c) }
   if aiming then
@@ -1854,6 +1933,7 @@ function M.shutdown()
   if vehicle_watch then vehicle_watch.stop() end
   if ball_watch then ball_watch.stop() end
   if weapon_watch then weapon_watch.stop() end
+  weapon_diagnostic.stop()
   grenade.stop()
 end
 

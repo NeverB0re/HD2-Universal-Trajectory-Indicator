@@ -69,10 +69,10 @@ Loader and enable both.
 ## Working on it
 
 Current completion work and validation boundaries: [DEVELOPMENT_STEPS.md](DEVELOPMENT_STEPS.md).
-`1.1.1-test.5` uses actual animated weapon muzzle nodes and adds prone weapon display, with sight-node proximity
+`1.1.1-test.6` retains actual animated weapon muzzle nodes and adds prone weapon display, with sight-node proximity
 refining first-person hiding. Installed-asset evidence and the focused runtime check are in
 [WEAPON_MUZZLES.md](WEAPON_MUZZLES.md). The user reports grenade arcs fit well after test.4; its fitting and saved
-calibration are unchanged. Weapon test.5 gameplay is still unverified. Existing stratagem/C4 behavior, native
+calibration are unchanged. The user confirmed muzzle alignment and prone display in test.5 but found leftward direction error. Test.6 adds bounded shot diagnostics; the direction error is still unresolved. Existing stratagem/C4 behavior, native
 grenade profiles and automatic learning remain.
 
 ```bash

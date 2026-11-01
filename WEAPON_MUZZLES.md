@@ -1,4 +1,4 @@
-# Weapon muzzle and prone work: test.5
+# Weapon muzzle and prone work: test.5 / test.6 diagnostics
 
 2026-11-01. Based on local installed Steam build 26251122. The user reports grenade arcs fit well after test.4;
 this milestone changes weapon selection/origin/view classification only. Grenade fitting and saved calibration are unchanged.
@@ -77,4 +77,35 @@ when practical to determine whether the existing direction model also needs stan
 weapon unlock or extra mod download is required. Report the weapon and any remaining origin/direction/missing-line
 issue; `throwable_arcs.log` names the selected muzzle node or the compatibility fallback.
 
-Test.5 has not been run in game and is not a stable release. No remote push is authorized by offline checks alone.
+## Runtime result and test.6 direction evidence
+
+The user confirmed on 2026-11-01 that test.5 starts at the visible muzzle and displays while prone. However, the
+arc now lies left of actual fire, with greater disagreement standing/crouched than prone. Test.5 is not stable.
+The direction formula itself was unchanged, but that does not establish that its root/camera correction remains
+valid with the selected unit and animated origin. Static node axes do not establish their runtime rotation.
+The existing old Weapon Probe log records muzzle and root directions plus earlier projectiles, but does not
+measure this test.5 regression. Current throwable_arcs.log has no corresponding weapon shot vectors.
+
+Test.6 preserves test.5 geometry and ballistics and adds passive, bounded evidence only. For the first nine trigger
+presses while a supported third-person weapon arc is drawn, it logs camera/root/muzzle vectors, root height above
+feet, the active learned yaw/pitch offsets, player movement and the exact predicted initial velocity. The muzzle
+forward read uses the same loader node-rotation API already used by Weapon Probe. It does not calibrate to it.
+
+A paused loader watch resumes for 0.35 seconds after a logged shot, listing known projectile kinds every 0.05s.
+It logs up to three nearby candidate units and their positions every 0.02s; it then pauses again. Existing watch
+items are excluded. A candidate is explicitly unverified: another player, an old round appearing on refresh, or
+multiple rounds can confound association. Only a continuous flight consistent with this shot should be analyzed.
+No projectile observation changes calibration or a displayed arc. There is no new direct world scan or download.
+
+Known traceable pairs are GL-21/GL-52, GP-20, CB-9, P-34 and RL-77, from existing Weapon Probe evidence. Other
+weapons still log vectors but have no presumed projectile mapping; Epoch's projectile was not a unit in earlier
+measurements. Prefer GL-21 or GP-20 for this focused test, since the user already used those weapons.
+
+Use one such weapon, stationary, in third person, aiming at a distant fixed surface. Wait about one second after
+each stance/aim change and fire two single shots standing, two crouched, two prone. Keep the same aim point when
+practical. No extra weapon survey or grenade test is needed. After exiting, analyze the existing
+`%APPDATA%\Arrowhead\Helldivers2\throwable_arcs.log`. If no candidate flight was observed, vector records alone
+must not be represented as projectile accuracy evidence.
+
+All 124 Lua 5.1 tests pass, including bounded diagnostic activation, session budget, world-change cancellation,
+recording distinct root/node rotations, and unchanged drawn arcs. No test.6 real-game run or remote push.
