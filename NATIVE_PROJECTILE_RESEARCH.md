@@ -163,3 +163,9 @@ screen position is available, camera unprojection gives a ray from the CAMERA; w
 depth, it cannot uniquely determine a ray from a different projectile origin. Do not
 silently choose a fixed world distance. First inspect what native data the reference
 actually reads and how it projects it; retain existing trajectories until validated.
+
+User authorized download/internal analysis of the linked Diver HUD package. The original
+MEGA file handle `dug3QKAB` returned API result `-9` on two metadata attempts; no archive was
+received or installed, so no internal code analysis is claimed. HD2 HUD+ is a distinct
+package and its download has not yet been authorized. Prefer its original author download
+over an unofficial continuation; use the native-coordinate mechanism as research only.
