@@ -47,10 +47,29 @@ def icon_id(mode, size):
     return murmur64(("%s/c4_%s_%d" % (RESOURCE, mode, size)).encode("utf-8"))
 
 
+def strip_development_tracing(source):
+    """Stable packages contain neither diagnostic collectors nor their per-frame hooks."""
+    for name in ('WEAPON', 'VEHICLE'):
+        pattern = r'^-- DEVELOPMENT_' + name + r'_TRACE_BEGIN\n.*?^-- DEVELOPMENT_' + name + r'_TRACE_END\n'
+        source, count = re.subn(pattern, '', source, flags=re.M | re.S)
+        if count != 1:
+            raise ValueError('missing unique development trace block: ' + name)
+    for line in ('  weapon_diagnostic.vehicle(c, weapon, muzzle, weapon_unit, weapon_kind)\n',
+                 '  weapon_diagnostic.update(c, weapon, muzzle, aim, weapon_unit, weapon_kind, aim_mode)\n',
+                 '  weapon_diagnostic.stop()\n'):
+        if source.count(line) != 1:
+            raise ValueError('missing unique development hook: ' + line.strip())
+        source = source.replace(line, '')
+    return source
+
+
 def built_source():
     """The mod's Lua with the armour table in its "@ARMOUR@" slot and the icons' textures in "@ICONS@"."""
     with open(SOURCE, encoding="utf-8") as f:
         source = f.read()
+    version = re.search(r"local VERSION = '([^']+)'", source).group(1)
+    if '-test.' not in version:
+        source = strip_development_tracing(source)
     with open(ARMOUR, encoding="utf-8") as f:
         armour = f.read()
     with open(WEAPON_TYPES, encoding="utf-8") as f:

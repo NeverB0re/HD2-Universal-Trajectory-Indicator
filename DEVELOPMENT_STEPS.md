@@ -190,3 +190,12 @@ weapon/tank calculations. Generate shared bind geometry with optional inspector 
 User permits development projectile acquisition, but current native research/build code does not match and the
 running-game module read is denied. No flight captured; no more GR-8 shooting requested until access is solved.
 Evidence: WEAPON_MUZZLES.md and NATIVE_PROJECTILE_RESEARCH.md. No remote push.
+
+
+## Step 4 historical trace recovery: 1.1.1-test.14
+
+Old test.3-6 code did attempt new-unit GR-8 tracking; the current allowlist cannot establish that GR-8 is
+untrackable. Correct that inference. Old raw GR-8 numbers were not recovered from searched current files, so
+restore bounded Chef new-unit discovery, explicit candidate identity uncertainty and synchronized model sampling.
+Do not apply a numerical correction yet. Strip all weapon/vehicle diagnostic blocks and hooks from stable builds.
+152 tests pass; two-shot GR-8 capture pending. NATIVE_PROJECTILE_RESEARCH.md records the corrected evidence.

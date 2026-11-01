@@ -56,3 +56,40 @@ identity checks, slot-reuse/in-flight guards, finite-value validation, timestamp
 correlation to the mod's shot/muzzle/body records. Record actual vanilla shots; never modify them to measure them.
 No collector was bundled into test.13 or any release ZIP. Existing development-only Lua unit tracking remains
 bounded; removing all development tracing from a stable release remains a release gate.
+
+
+## Historical correction and restored Chef path (test.14)
+
+The user recalls earlier actual-round checks. Git confirms `248c528` (1.1.0-test.3) and `3698ed7` (test.6) used
+World.units before/after the click and followed new moving units without a projectile-kind allowlist. The test.6
+source explicitly notes that test.3 GR-8 rounds disappeared before 0.3s and shortens the comparison to about 20m.
+The historical algorithm could misassociate another new moving unit; that comment alone is not a validated
+projectile identity or a numerical launch-angle calibration. However, it directly contradicts treating the recent
+allowlist's missing GR-8 entry as evidence that GR-8 cannot have a trackable unit. That earlier inference was wrong.
+External native access failure remains true but does not exhaust the in-game Lua route.
+
+Searched current Arrowhead log directory, workspace research/fixtures and tracked Git file history. The surviving
+weapon_probe.log has no GR-8 model/shot match; its known round tracks belong to other weapons. The current
+throwable_arcs.log covers later runs, not the old test.3-6 checks. No old `shot check GR-8 ... round KIND` or GR-8
+`flight` position series was recovered from those locations. Git preserves code and notes, not the absent runtime
+numbers, so a correction cannot be recalculated from the historical comment alone. This does not establish that
+no user-held backup or other conversation record exists.
+
+Test.14 restores a bounded version of that in-game new-unit discovery for GR-8 only. It uses guarded Chef APIs,
+not process memory access or an old native address. Baseline at aiming/equipping (at most six arms per load), at
+most six full unit enumerations within 0.14s after a recorded click, at most 64 newly seen handles examined per
+scan and twelve nearby candidates. The dangerous runtime-built kind is excluded before position reads. Candidate
+positions continue only in the existing 0.35s window / sixteen-shot global budget and three-per-weapon/profile cap.
+No baseline or discovery scan is repeated continuously while holding aim.
+
+All candidates keep their kind and independent position series. Summaries label continuous multi-sample motion
+with mean speed 0.5..1.5 times the weapon's nominal speed as plausible, but identity remains explicitly unverified.
+Static/reload/animation units are not silently called projectiles and no candidate changes a displayed arc or a
+calibration. Actual resource identity, source ambiguity, first-seen timing and trajectory continuity must be checked
+from the next trace before deriving GR-8 coefficients. Simultaneous model/camera records at each sample separate
+input-frame measurements from actual appearance. The historical farthest-unit winner heuristic is not reinstated.
+
+Build-time development markers remove BOTH weapon and vehicle collectors plus their update/shutdown hooks from
+non-test versions. The stable-source compile/runtime test verifies no weapon_diagnostic, candidate-summary,
+GR-8 discovery or vehicle-aim recorder remains, while weapon arcs work. No native external collector is included.
+A live GR-8 flight is still pending; do not represent restored capability in a fake-loader test as captured data.

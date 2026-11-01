@@ -9,7 +9,7 @@
 -- Transmog's catalog (Nexus 16633).
 local chef = ...
 local M = {}
-local VERSION = '1.1.1-test.13'
+local VERSION = '1.1.1-test.14'
 
 if chef.has and chef.has('own_log') then chef.own_log('throwable_arcs') end
 local function log(fmt, ...) chef.log(fmt, ...) end
@@ -1091,6 +1091,7 @@ local function weapon_aim(c, kind, u, muzzle)
            math.atan2(fz, math.sqrt(fx * fx + fy * fy)) - math.rad(off[2]) }, 'world-offset'
 end
 
+-- DEVELOPMENT_WEAPON_TRACE_BEGIN
 -- Temporary test.6 direction evidence. Never changes the aim/calibration. At most 16 presses per load and three per weapon/context;
 -- the existing loader watch scans only during each 0.35s sample window, never continuously while aiming.
 local weapon_diagnostic = (function()
@@ -1103,6 +1104,7 @@ local weapon_diagnostic = (function()
   local watch = chef.watch and chef.watch(kinds, 0.05)
   if watch then watch.pause() end
   local previous, count, sample, budgets = false, 0, nil, {}
+  local discovery, discovery_arms = nil, 0
   local function vector(label, x, y, z)
     if type(x) == 'number' and type(y) == 'number' and type(z) == 'number' then
       log('weapon direction %d %s %.6f %.6f %.6f', count, label, x, y, z)
@@ -1136,12 +1138,52 @@ local weapon_diagnostic = (function()
       end
     end
   end
+  local function all_units()
+    local units = chef.call('World.units', chef.world())
+    return type(units) == 'table' and units or {}
+  end
+  local function finish_sample()
+    for i, tr in ipairs(sample.tracks) do
+      local elapsed = (tr.last_t or tr.first_t) - tr.first_t
+      local speed = elapsed > 0 and tr.distance / elapsed or 0
+      local plausible = tr.n >= 3 and elapsed >= 0.035 and speed >= sample.speed * 0.5 and speed <= sample.speed * 1.5
+      log('weapon direction %d candidate-summary track=%d kind=%s samples=%d mean-speed=%.3f plausible=%s; identity unverified',
+          count, i, tr.kind, tr.n, speed, tostring(plausible))
+    end
+    log('weapon direction %d sample-end candidates=%d discovery-scans=%d', count, #sample.tracks, sample.scans or 0)
+    if watch then watch.pause() end
+    sample = nil
+  end
+  local function candidate(unit, kind, t)
+    if sample.seen[unit] then return end
+    sample.seen[unit] = true
+    if not (kind and kind ~= '46cab355bd8d4d37' and chef.unit_alive(unit)) then return end
+    local x, y, z = chef.unit_position(unit)
+    local o = sample.origin
+    if not (x and x == x and y == y and z == z) then return end
+    if (x-o[1])^2+(y-o[2])^2+(z-o[3])^2 >= 400 or #sample.tracks >= (sample.discover and 12 or 3) then return end
+    sample.tracks[#sample.tracks+1] = { unit=unit, kind=kind, first_t=t, n=0, distance=0 }
+    log('weapon direction %d candidate %d kind=%s; association unverified', count, #sample.tracks, kind)
+  end
   return {
     update = function(c, w, muzzle, aim, u, kind, aim_mode)
       local down, t = chef.mouse_down('left') == true, now()
+      -- Restore the old test.3-6 new-unit path for GR-8, without assuming a projectile hash.
+      -- One baseline per aiming/equipped unit (six arms/load), then at most six scans per shot; test builds only.
+      if kind ~= '9f80d67a12a7e40f' then discovery = nil
+      elseif not discovery or discovery.unit ~= u or discovery.world ~= chef.world_id() then
+        if discovery_arms < 6 and count < 16 then
+          discovery_arms = discovery_arms + 1
+          local before = {} -- retain baseline handles until aim/window ends; do not let GC invent new units
+          for _, unit in ipairs(all_units()) do before[unit] = true end
+          discovery = { unit=u, world=chef.world_id(), before=before }
+          log('GR-8 discovery armed %d; new-unit identity remains unverified', discovery_arms)
+        end
+      end
       local profile = down and not previous and w and count < 16 and weapon_profile(kind, u)
       local key = profile and (kind .. '/' .. profile[3])
       if down and not previous and w and muzzle and count < 16 and (budgets[key] or 0) < 3 then
+        if sample then finish_sample() end
         budgets[key] = (budgets[key] or 0) + 1
         count = count + 1
         local mx, my = my_move()
@@ -1161,38 +1203,56 @@ local weapon_diagnostic = (function()
         body_snapshot(t)
         local off = profile
         log('weapon direction %d offset-deg %.6f %.6f profile=%s fixed=true direction-mode=%s', count, off[1], off[2], off[3], aim_mode or 'unavailable')
-        if watch then
-          local seen = setmetatable({}, { __mode = 'k' })
-          for _, it in ipairs(watch.items) do seen[it.unit] = true end
-          sample = { at = t, world = chef.world_id(), kind = rounds[kind], origin = muzzle,
-                     seen = seen, tracks = {}, next = 0 }
-          if sample.kind then watch.resume(); watch.refresh() else sample = nil; watch.pause() end
-        end
+        local seen = setmetatable({}, { __mode = 'k' })
+        if watch then for _, it in ipairs(watch.items) do seen[it.unit] = true end end
+        local discover = kind == '9f80d67a12a7e40f' and discovery
+        sample = { at=t, world=chef.world_id(), kind=rounds[kind], origin=muzzle, speed=w[1],
+                   seen=seen, tracks={}, next=0, scans=0, next_scan=0, weapon=u, row=w,
+                   discover=discover and true or false, before=discover and discover.before }
+        if sample.kind and watch then watch.resume(); watch.refresh()
+        elseif sample.discover then if watch then watch.pause() end
+        else sample = nil; if watch then watch.pause() end end
       end
       previous = down
       if not sample then return end
-      if t - sample.at > 0.35 or sample.world ~= chef.world_id() then
-        log('weapon direction %d sample-end candidates=%d', count, #sample.tracks)
-        watch.pause(); sample = nil; return
-      end
-      for _, it in ipairs(watch.items) do
-        if it.kind == sample.kind and not sample.seen[it.unit] and chef.unit_alive(it.unit) then
-          sample.seen[it.unit] = true
-          local x, y, z = chef.unit_position(it.unit)
-          local o = sample.origin
-          if x and (x - o[1]) ^ 2 + (y - o[2]) ^ 2 + (z - o[3]) ^ 2 < 20 * 20 and #sample.tracks < 3 then
-            sample.tracks[#sample.tracks + 1] = it.unit
-            log('weapon direction %d candidate %d kind=%s; association unverified', count, #sample.tracks, it.kind)
+      if t-sample.at > 0.35 or sample.world ~= chef.world_id() then finish_sample(); return end
+      if sample.discover and t-sample.at <= 0.14 and sample.scans < 6 and t >= sample.next_scan then
+        sample.scans, sample.next_scan = sample.scans+1, t+0.02
+        local examined = 0
+        for _, unit in ipairs(all_units()) do
+          if not sample.before[unit] then
+            sample.before[unit] = true
+            examined = examined+1
+            if chef.unit_alive(unit) then candidate(unit, chef.unit_kind(unit), t) end
+            if examined >= 64 then break end
           end
+        end
+      elseif sample.kind and watch then
+        for _, it in ipairs(watch.items) do
+          if it.kind == sample.kind then candidate(it.unit, it.kind, t) end
         end
       end
       if t >= sample.next then
-        sample.next = t + 0.02
-        for i, unit in ipairs(sample.tracks) do
-          if chef.unit_alive(unit) then
-            local x, y, z = chef.unit_position(unit)
-            if x then log('weapon direction %d track=%d dt=%.6f position=%.6f %.6f %.6f',
-                          count, i, t - sample.at, x, y, z) end
+        sample.next = t+0.02
+        -- Sample the firing weapon once per tick, even if another weapon is now selected.
+        if sample.weapon and chef.unit_alive(sample.weapon) then
+          local live = muzzle_of(sample.weapon, sample.row)
+          local x,y,z = chef.unit_position(sample.weapon)
+          local fx,fy,fz = chef.unit_rotation(sample.weapon)
+          if live and x and type(fx)=='number' then
+            log('weapon direction %d sync dt=%.6f muzzle=%.6f %.6f %.6f root=%.6f %.6f %.6f'
+                .. ' forward=%.6f %.6f %.6f camera=%.6f %.6f %.6f camera-forward=%.6f %.6f %.6f',
+                count,t-sample.at,live[1],live[2],live[3],x,y,z,fx,fy,fz,c.x,c.y,c.z,c.fx,c.fy,c.fz)
+          end
+        end
+        for i, tr in ipairs(sample.tracks) do
+          if chef.unit_alive(tr.unit) then
+            local x,y,z = chef.unit_position(tr.unit)
+            if x and x==x and y==y and z==z then
+              if tr.last then tr.distance = tr.distance+math.sqrt((x-tr.last[1])^2+(y-tr.last[2])^2+(z-tr.last[3])^2) end
+              tr.last, tr.last_t, tr.n = {x,y,z}, t, tr.n+1
+              log('weapon direction %d track=%d dt=%.6f position=%.6f %.6f %.6f',count,i,t-sample.at,x,y,z)
+            end
           end
         end
       end
@@ -1200,6 +1260,7 @@ local weapon_diagnostic = (function()
     stop = function() if watch then watch.stop() end end,
   }
 end)()
+-- DEVELOPMENT_WEAPON_TRACE_END
 
 -- one WEAPON_STEP of a round's flight
 local function fly(w, px, py, pz, vx, vy, vz)
@@ -1932,6 +1993,7 @@ in_vehicle = function()
          selected and selected.kind, selected and selected.unit, bup
 end
 
+-- DEVELOPMENT_VEHICLE_TRACE_BEGIN
 -- test.8: seat/aim eligibility is not yet exposed by a verified loader API. Collect existing animation variables
 -- on vehicle aim transitions without guessing a driver enum or suppressing working passenger arcs.
 -- No new watch/world scan; at most 16 snapshots per load (entry and 0.7s after entry).
@@ -1988,6 +2050,7 @@ weapon_diagnostic.vehicle = (function()
     end
   end
 end)()
+-- DEVELOPMENT_VEHICLE_TRACE_END
 
 local function draw_icon(mode)
   local w, h = chef.screen()

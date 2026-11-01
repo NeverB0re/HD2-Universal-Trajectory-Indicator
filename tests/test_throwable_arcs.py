@@ -2190,6 +2190,57 @@ class ArcTest(unittest.TestCase):
         self.frames(60)
         self.assertEqual(self.logs().count('avatar-weapon_aim-forward'), entries)
 
+    def test_gr8_discovers_an_unknown_fast_unit_without_a_projectile_hash(self):
+        self.weapon_in_hand('9f80d67a12a7e40f')
+        old = self.add_unit('1111111111111111', 2, -.2, 1.2)
+        self.fake['mouse']['right'] = True
+        self.frames(2)  # baseline before the click
+        self.fake['mouse']['left'] = True
+        self.frames(1)
+        round_unit = self.add_unit('fedcba9876543210', 2.4, -.2, 1.2)
+        static = self.add_unit('2222222222222222', 3, -.2, 1.2)
+        self.add_unit('46cab355bd8d4d37', 3, 0, 1)  # unsafe runtime kind must never be positioned
+        for _ in range(22):
+            round_unit.x += 250 / 60
+            old.x += 250 / 60
+            self.frames(1)
+        self.assertIn('kind=fedcba9876543210', self.logs())
+        self.assertNotIn('kind=1111111111111111', self.logs())
+        self.assertNotIn('NATIVE CRASH', self.logs())
+        summaries = [line for line in self.logs().splitlines() if 'candidate-summary' in line]
+        self.assertTrue(any('kind=fedcba9876543210' in line and 'plausible=true' in line for line in summaries))
+        self.assertTrue(any('kind=2222222222222222' in line and 'plausible=false' in line for line in summaries))
+        self.assertIn('sync dt=', self.logs())
+        self.assertIn('identity unverified', self.logs())
+        self.assertRegex(self.logs(), r'discovery-scans=[1-6](?:\n|$)')
+        scans = self.fake.calls['World.units']
+        self.frames(60)
+        self.assertEqual(self.fake.calls['World.units'], scans, 'no scans continue after the window')
+
+    def test_gr8_idle_discovery_baseline_is_bounded(self):
+        self.weapon_in_hand('9f80d67a12a7e40f')
+        self.fake['mouse']['right'] = True
+        self.frames(2)
+        scans = self.fake.calls['World.units']
+        self.frames(180)
+        self.assertEqual(self.fake.calls['World.units'], scans)
+        self.assertEqual(self.logs().count('GR-8 discovery armed'), 1)
+
+    def test_stable_source_excludes_development_collectors_and_hooks(self):
+        source = ta_build.strip_development_tracing(ta_build.built_source())
+        for token in ('weapon_diagnostic', 'candidate-summary', 'GR-8 discovery armed', 'vehicle aim', 'body_snapshot'):
+            self.assertNotIn(token, source)
+        self.M = self.lua.execute(source, self.lua.globals().chef)
+        self.weapon_in_hand('9f80d67a12a7e40f')
+        self.fake['mouse']['right'] = True
+        self.frames(3)
+        self.assertGreater(len(self.lines()), 20)
+        self.fake['mouse']['left'] = True
+        self.frames(30)
+        self.assertNotIn('GR-8 discovery armed', self.logs())
+        self.assertNotIn('weapon direction', self.logs())
+        self.M.shutdown()
+
     def test_weapon_direction_probe_cancels_on_world_change(self):
         self.weapon_in_hand(self.GL)
         self.fake['mouse']['right'] = True

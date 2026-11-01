@@ -69,12 +69,12 @@ Loader and enable both.
 ## Working on it
 
 Current completion work and validation boundaries: [DEVELOPMENT_STEPS.md](DEVELOPMENT_STEPS.md).
-`1.1.1-test.13` trials a separate fixed weapon-frame correction for GL-21 in FRVs using three recorded flights.
-Tank aiming, other FRV weapons and test.12 prone behavior are retained. The unsupported +0.15deg GR-8 proposal
-was removed before packaging; no GR-8 vertical trim is applied. Shared bind geometry is generated at build time.
-All 149 offline tests pass; FRV gameplay remains unverified. See [WEAPON_MUZZLES.md](WEAPON_MUZZLES.md) for evidence
-and [NATIVE_PROJECTILE_RESEARCH.md](NATIVE_PROJECTILE_RESEARCH.md) for the currently blocked GR-8 measurement path.
-No native collector is included. Grenade fitting and saved
+`1.1.1-test.14` restores bounded development-only new-unit GR-8 discovery from the old test.3-6 approach.
+The missing GR-8 entry in the recent projectile allowlist was not proof that no trackable unit exists. Candidate
+identity remains unverified until actual flight records are examined. No trajectory coefficient changes here;
+test.13's FRV GL-21 candidate and other contexts are retained. All 152 offline tests pass, and stable builds now
+strip both development collectors and their hooks automatically. See [WEAPON_MUZZLES.md](WEAPON_MUZZLES.md) and
+[NATIVE_PROJECTILE_RESEARCH.md](NATIVE_PROJECTILE_RESEARCH.md) for evidence and the two-shot capture check. Grenade fitting and saved
 calibration are unchanged from the user-accepted test.4. Existing stratagem/C4 behavior, native
 grenade profiles and automatic learning remain.
 

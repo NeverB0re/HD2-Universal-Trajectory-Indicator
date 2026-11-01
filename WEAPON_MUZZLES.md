@@ -1,4 +1,4 @@
-# Weapon muzzle and prone work: test.5 through test.13
+# Weapon muzzle and prone work: test.5 through test.14
 
 2026-11-01. Based on local installed Steam build 26251122. The user reports grenade arcs fit well after test.4;
 this milestone changes weapon selection/origin/view classification only. Grenade fitting and saved calibration are unchanged.
@@ -442,3 +442,32 @@ first establishing a functioning measurement path.
 
 Focused optional test.13 check: GL-21 only, stationary FRV passenger, one forward and one side/downward shot.
 No tank or prone GR-8 repeat is needed for code intentionally unchanged in this build. Runtime pending; no push.
+
+
+## Test.14: restore the earlier GR-8 round-discovery experiment
+
+User correctly recalls the old test.3-6 actual-round comparison code. It searched new units generally, unlike the
+current five-kind projectile watcher. Git preserves the code and a GR-8 short-lifetime note, but the corresponding
+raw GR-8 flight numbers were not found in current logs/workspace/tracked history. No GR-8 numerical correction
+can be recalculated yet. See the historical reassessment in NATIVE_PROJECTILE_RESEARCH.md.
+
+Restore new-unit discovery only for GR-8 and only within strict development budgets. Detect and log nearby units
+born after the aim baseline; retain all candidate series rather than choosing the farthest and assuming it is the
+shell. Exclude unsafe runtime-built units. Multi-sample/speed summaries remain unverified associations. Capture
+muzzle/root position, root direction, camera position and forward in the same tick as tracked positions. Always
+sample the firing weapon, even if a different weapon is selected after the shot. No aim or physics value changes.
+A separate external memory reader or new download is unnecessary for this experiment.
+
+152 Lua 5.1 tests pass, including unknown fast candidate discovery, rejection of static/existing/unsafe candidates,
+no continued scan after the window, no repeated baseline while holding aim, synchronized observations and stable
+source removal of all development collectors. The existing release-gate requirement to remove these collectors
+is now implemented automatically for VERSION strings without '-test.'. Test builds retain the bounded recorder.
+
+Only two new GR-8 shots are requested to establish this route: one standing, one prone. Briefly aim before firing
+so the existing-unit baseline is recorded; this is not calibration or learning. Wait at least one second between
+shots. If a continuous plausible GR-8 series is captured, identify its resource and fit the actual flight offline
+before changing any angle. If not, inspect the discovery result before requesting more shots. The user may also
+supply any retained old `shot check`/`flight` logs; those should take priority over repeating an experiment.
+
+Test.13 FRV candidate, tank behavior and test.12 GR-8 direction are unchanged in this build. No live test.14 trace
+or projectile identity confirmation is claimed. No remote push.
