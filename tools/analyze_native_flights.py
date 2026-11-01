@@ -4,6 +4,7 @@ Fit elevation against range, not wall-clock time: discovery/render delay is unkn
 Keep each weapon's existing speed, gravity and drag fixed. A kind/speed match is
 correlation evidence, not an engine-provided shooter/projectile identity.
 """
+import argparse
 import json
 import math
 from pathlib import Path
@@ -54,8 +55,9 @@ def fit(samples, model):
                 pitch_deg=pitch, vertical_rms_m=math.sqrt(elevation_loss(pitch, points, *model[1:])))
 
 
-def analyze():
-    shots = json.loads((BASE / 'tests/fixtures/weapon_direction_test14.json').read_text(encoding='utf-8'))['shots']
+def analyze(path=None):
+    path = Path(path) if path else BASE / 'tests/fixtures/weapon_direction_test14.json'
+    shots = json.loads(path.read_text(encoding='utf-8'))['shots']
     results = []
     for number, row in shots.items():
         kind = row['header'].split('kind=')[1].split()[0]
@@ -71,6 +73,17 @@ def analyze():
             observed = fit(samples, model)
             root, predicted = [angles(row['vectors'][k]) for k in ('root-forward', 'predicted-velocity')]
             wrap = lambda a: (a + 180) % 360 - 180
+            # Compare ALL poses, not just the one with minimum error. A best-matching pose is
+            # not automatically the engine's firing pose; later snapshots can include recoil.
+            comparisons = []
+            poses = [('pre-shot', p) for p in row.get('pre_shot', [])]
+            poses += [('sync', p) for p in row.get('sync', [])]
+            for label, p in poses:
+                heading, elevation = angles(p['forward'])
+                comparisons.append(dict(label=label, dt=p['dt'],
+                    root_yaw_error_deg=wrap(heading-observed['yaw_deg']),
+                    root_pitch_minus_flight_deg=elevation-observed['pitch_deg'],
+                    muzzle_to_first_position_m=math.dist(p['muzzle'], samples[0][1:])))
             observed.update(shot=number, kind=kind, candidate_kind=resource, samples=len(samples),
                 root_height_m=float(row['header'].split('root-height=')[1]),
                 root_yaw_error_deg=wrap(root[0] - observed['yaw_deg']),
@@ -78,10 +91,15 @@ def analyze():
                 displayed_pitch_error_deg=predicted[1] - observed['pitch_deg'],
                 first_seen_to_click_muzzle_m=math.dist(samples[0][1:], row['vectors']['muzzle-position']),
                 first_seen_delay_s=samples[0][0],
+                stationary_click=math.hypot(*row['vectors']['player-velocity'][:2]) < .1,
+                pose_comparisons=comparisons,
                 caveat='pitch at first observation, nominal speed/drag held fixed; not a universal calibration')
             results.append(observed)
     return results
 
 
 if __name__ == '__main__':
-    print(json.dumps(analyze(), indent=2))
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--input', type=Path, help='JSON exported by capture_weapon_trace.py')
+    args = parser.parse_args()
+    print(json.dumps(analyze(args.input), indent=2))

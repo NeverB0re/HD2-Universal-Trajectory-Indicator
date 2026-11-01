@@ -169,3 +169,37 @@ MEGA file handle `dug3QKAB` returned API result `-9` on two metadata attempts; n
 received or installed, so no internal code analysis is claimed. HD2 HUD+ is a distinct
 package and its download has not yet been authorized. Prefer its original author download
 over an unofficial continuation; use the native-coordinate mechanism as research only.
+
+## Resume actual-flight comparison after reference inspection
+
+The supplied current Diver HUD and HD2 Crosshair package results are documented separately
+in DIVER_HUD_RESEARCH.md and CROSSHAIR_MOD_RESEARCH.md. Neither supplied package yielded a
+native shot-direction accessor. The user explicitly resumes the prior actual-flight route.
+
+Test.15 already contains the necessary separate diagnostic stance budgets and eight-frame
+pre-click history. Its ZIP has been rechecked for CRC, version and those recorder markers.
+No extra angle/physics change or new package version is justified before this evidence.
+
+The current log still ends with test.14. No test.15 in-game validation is claimed. The
+minimal next capture remains six stationary prone shots: GR-8 and CB-9, each forward,
+left and right while the lower body is kept fixed. Settle aim for about one second before
+each click and allow at least one second after it. Use clear, distant terrain (roughly
+60m or more) so early impacts do not truncate the 0.35s sample. Existing standing controls
+are sufficient; no vehicle run or additional weapon is required. These are validation
+observations for an offline fixed model, never in-game learning.
+
+Evidence tooling now retains pre-click and post-click poses separately and compares every
+pose rather than choosing the lowest-error snapshot as proof of a firing timestamp:
+
+```powershell
+.venv\Scripts\python.exe -B tools/capture_weapon_trace.py "$env:APPDATA\Arrowhead\Helldivers2\throwable_arcs.log" --version 1.1.1-test.15 --output path-to-new-capture.json
+.venv\Scripts\python.exe -B tools/analyze_native_flights.py --input path-to-new-capture.json
+.venv\Scripts\python.exe -B tests/test_weapon_trace_tools.py
+```
+
+The exporter separates runs even when shot numbers restart, refuses stale/missing versions
+or an empty newest matching run, preserves all candidate series and refuses to overwrite
+an existing output file. It does not modify the game or its logs. Seven offline integrity
+tests pass. Exporting the real test.14 log exactly reproduces all five saved shot headers,
+vectors, candidates, tracks, synchronized poses and summaries; GR-8 error measurements
+remain unchanged. These checks validate evidence handling, not a prone accuracy fix.
