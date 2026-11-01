@@ -1798,6 +1798,43 @@ class ArcTest(unittest.TestCase):
                     self.assertEqual(self.lines(), [])
                     self.assertIn('FRV weapon not raised for aiming', self.logs())
 
+    def test_supply_frv_driver_and_passenger_use_the_same_eligibility_gate(self):
+        for n, expected in ((9, False), (2, True)):
+            with self.subTest(snapshot=n):
+                self.setUp()
+                gun = self.weapon_in_hand('fe3b29b2cfa63f9b')
+                self.fake.me.named_nodes = self.lua.table_from({'attach_hand_r': 7})
+                self.frames(1)
+                self.apply_vehicle_snapshot(gun, n)
+                car = self.vehicle_at(self.fake.me.x + .4, self.fake.me.y + .3, self.fake.me.z - .6)
+                car.kind = '9b2140378640432e'
+                self.fake['mouse']['right'] = True
+                self.frames(1)
+                self.assertEqual(bool(self.lines()), expected)
+                self.assertIn('vehicle-kind=9b2140378640432e', self.logs())
+                if not expected:
+                    self.assertIn('FRV weapon not raised for aiming', self.logs())
+
+    def test_gr8_prone_estimate_is_fixed_and_does_not_change_other_height_groups(self):
+        with open(os.path.join(HERE, 'fixtures', 'weapon_direction_test9.json'), encoding='utf-8') as f:
+            row = json.load(f)['shots']['1']
+        gun = self.weapon_in_hand('9f80d67a12a7e40f')
+        self.apply_direction_flight(gun, row)
+        self.weapon_nodes(gun, row['vectors']['muzzle-position'], name='muzzle')
+        self.fake['mouse']['right'] = True
+        self.frames(1)
+        camera = row['vectors']['camera-forward']
+        camera_yaw = math.degrees(math.atan2(camera[1], camera[0]))
+        # This checks the explicitly estimated camera reference, not measured projectile accuracy.
+        self.assertAlmostEqual(self.yaw_error(self.drawn_yaw(), camera_yaw), 0, delta=.08)
+        first = self.lines()
+        self.frames(120)
+        self.assertEqual(self.lines(), first)
+        for height in (.9, 1.5):
+            gun.z = self.fake.me.z + height
+            self.frames(1)
+            self.assertAlmostEqual(self.yaw_error(self.drawn_yaw(), camera_yaw), -1.3556, delta=.08)
+
     def test_prone_soldier_on_ground_beside_frv_is_preserved(self):
         gun = self.weapon_in_hand(self.GL)
         gun.z = .3

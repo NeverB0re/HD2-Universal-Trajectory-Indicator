@@ -1,4 +1,4 @@
-# Weapon muzzle and prone work: test.5 through test.9
+# Weapon muzzle and prone work: test.5 through test.10
 
 2026-11-01. Based on local installed Steam build 26251122. The user reports grenade arcs fit well after test.4;
 this milestone changes weapon selection/origin/view classification only. Grenade fitting and saved calibration are unchanged.
@@ -265,3 +265,37 @@ GL-52/CB-9/GL-21 may then fire two single shots after raising the weapon. Use th
 and compare immediately versus several seconds later while keeping the actual aim/weapon pose unchanged.
 There is no calibration wait requirement. State which weapon was used and whether the line/impact shifts;
 passenger accuracy is still pending the first captured passenger rounds. No remote push.
+
+
+## Test.10: supply FRV coverage and estimated GR-8 low-root yaw
+
+User confirms GL trajectories fit in test.9, driver arcs persist in a **supply FRV**, and GR-8 agrees standing /
+crouched but is laterally displaced prone. Keep GL-21 profiles and the fixed, non-learning architecture unchanged.
+Raw test.9 records are preserved in `tests/fixtures/weapon_direction_test9.json`.
+
+The driver guard only listed the regular FRV and flamer FRV. The supply FRV (`9b2140378640432e`) was watched but
+omitted from the guard. The installed resource list maps it to `vehicles/frv_supply/frv_supply.unit`. Add this
+third FRV kind to the existing raised-weapon check. No tank/exosuit suppression or broader radius/height gate is
+introduced. Existing geometry limitations remain. Vehicle snapshots now also name the selected vehicle kind and
+feet-above-vehicle-root height so a further failure can distinguish a kind omission from a geometry rejection.
+Recorded supply-driver poses still have the expected ~0.46m hand/root height, but vehicle-root height was not
+logged previously, so do not claim this omission was the only possible cause. Runtime confirmation is required.
+
+GR-8 shot 1 has root height 0.5129m, no meaningful player movement, root-camera yaw -1.3556deg and identical root /
+muzzle forward axes. The supported projectile watcher has no verified GR-8 projectile mapping. Its local weapon
+archive lists the weapon, optic and magazine units, not a clear projectile unit; no guessed projectile hash or
+broad live scan is added. Thus this snapshot is **not an actual GR-8 flight calibration**.
+
+Use an explicit fixed estimate for GR-8 only when its root is below 0.65m above tracked feet: yaw offset -1.35deg,
+with the existing pitch offset 1.5deg. This estimate aligns that captured heading with the camera; it is based on
+other recorded stationary weapons' near-camera round direction, not proof of GR-8 shot direction. The 0.65m band
+is estimated from the one prone record plus margin; a low crouch, slope or unusual animation could overlap it.
+Higher GR-8 roots retain exactly the old 0deg yaw / 1.5deg pitch fallback, preserving the reported standing and
+crouched behavior in those height groups. All GL-21 values, speeds, gravity, drag, origins and movement remain
+unchanged. Vehicle context is still separate and no offset is learned over time.
+
+All 140 Lua 5.1 tests pass, including supply-driver hiding / passenger preservation and immediate, stable GR-8
+low-root estimated heading without changing higher-root values. The GR-8 test checks alignment with the captured
+camera as an estimate; it does not assert a measured projectile match. Existing recorded GL-21 flight tests pass.
+Next check requires only supply-driver right-click and one or two GR-8 shots prone; note remaining lateral error.
+No GL-21 retest is required for unchanged profiles. Test.10 runtime pending; no remote push.

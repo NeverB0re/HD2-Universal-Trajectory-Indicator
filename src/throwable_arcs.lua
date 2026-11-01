@@ -9,7 +9,7 @@
 -- Transmog's catalog (Nexus 16633).
 local chef = ...
 local M = {}
-local VERSION = '1.1.1-test.9'
+local VERSION = '1.1.1-test.10'
 
 if chef.has and chef.has('own_log') then chef.own_log('throwable_arcs') end
 local function log(fmt, ...) chef.log(fmt, ...) end
@@ -796,6 +796,12 @@ local AIMING = { HELD_KEEP = 0.8 }
 local AIM_OFF, SIDE_CARRY = { 0, 1.5, 'on-foot/unmeasured' }, 0.5
 local AIM_PROFILES = {
   vehicle = { 0, 1.5, 'vehicle/unmeasured' },
+  -- test.9 GR-8 prone snapshot: root-camera yaw -1.35deg at height 0.513m. No tracked round;
+  -- this yaw and the 0.65m band are explicit estimates, not GL-21 data or a fitted GR-8 trajectory.
+  ['9f80d67a12a7e40f'] = {
+    low_height = 0.65,
+    { -1.35, 1.5, 'on-foot/GR-8-low-root-estimate' }, AIM_OFF, AIM_OFF,
+  },
   ['02eecd0b1fa49630'] = {
     { -1.84, 0.75, 'on-foot/low-root' },
     { -0.13, 0.95, 'on-foot/mid-root' },
@@ -970,7 +976,8 @@ local function launch(c, w, mx, my, aim, from)
 end
 
 -- Select a fixed profile from current geometry, not elapsed aiming time or previous observations.
--- Height bands are measured GL-21 root-height groups, not a native stance enum. Vehicle always has its own fallback.
+-- Height bands are geometry groups, not a native stance enum. GL-21 is fitted; GR-8 low-root is estimated.
+-- Vehicle always has its own fallback.
 local function weapon_profile(kind, u)
   local seated, _, _, up = in_vehicle()
   if seated and up and up >= 0.35 then return AIM_PROFILES.vehicle end
@@ -979,7 +986,7 @@ local function weapon_profile(kind, u)
     local _, _, z = chef.unit_position(u)
     if z then
       local height = z - me[3]
-      return profiles[height < 0.5 and 1 or (height < 1 and 2 or 3)]
+      return profiles[height < (profiles.low_height or 0.5) and 1 or (height < 1 and 2 or 3)]
     end
   end
   return AIM_OFF
@@ -1724,7 +1731,8 @@ local function weapon_aimed(c)
     -- Recorded FRV driver hand/root stays 0.46m above feet, versus 0.97-1.15m when a passenger aims.
     -- Require elevated vehicle geometry to avoid suppressing a prone soldier beside an FRV on the ground.
     if seated and up and up >= 0.35
-       and (vehicle_kind == 'cc21c7ffd3ebefb9' or vehicle_kind == '2d85bfe3d8717fe5') then
+       and (vehicle_kind == 'cc21c7ffd3ebefb9' or vehicle_kind == '2d85bfe3d8717fe5'
+           or vehicle_kind == '9b2140378640432e') then
       local _, _, z = chef.unit_position(u)
       if z and z - me[3] < 0.7 then
         kind, held_miss = nil, 'FRV weapon not raised for aiming'
@@ -1830,7 +1838,8 @@ weapon_diagnostic.vehicle = (function()
     if not right then state.next = nil; return end
     if state.count >= 16 or (not entry and (not state.next or t < state.next)) then return end
     -- Check proximity only for the two scheduled snapshots, not every held-aim frame.
-    if not in_vehicle() then state.next = nil; return end
+    local seated, vehicle_kind, _, vehicle_up = in_vehicle()
+    if not seated then state.next = nil; return end
     local phase
     if entry then phase, state.next = 'entry', t + 0.7
     elseif state.next and t >= state.next then phase, state.next = 'settled', nil end
@@ -1838,6 +1847,7 @@ weapon_diagnostic.vehicle = (function()
     state.count = state.count + 1
     log('vehicle aim %d %s t=%.6f hand=%s weapon=%s; proximity is not confirmed seat membership',
         state.count, phase, t, tostring(hand_pose()), tostring(kind))
+    log('vehicle aim %d vehicle-kind=%s feet-above-root=%s', state.count, tostring(vehicle_kind), tostring(vehicle_up))
     local function point(label, x, y, z)
       if type(x) == 'number' then log('vehicle aim %d %s %.6f %.6f %.6f', state.count, label, x, y, z) end
     end

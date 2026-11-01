@@ -151,3 +151,12 @@ height; add a bounded elevated-FRV raised-weapon eligibility check without suppr
 No verified seat enum is inferred from character_state. Reserve shot recording budget per weapon/profile so the
 next passenger flight can actually be observed. All 138 tests pass; test.9 runtime and passenger ballistics remain
 pending, along with unusual geometry/rapid turn coverage. See WEAPON_MUZZLES.md for data/limits.
+
+
+## Step 4 coverage correction: 1.1.1-test.10
+
+Test.9: user confirms grenade-launcher accuracy, reports GR-8 prone lateral error and continued supply-FRV driver
+arcs. Add the omitted supply-FRV kind to the same raised-weapon guard. Add an explicitly estimated GR-8 low-root
+fixed yaw correction from its one captured root/camera snapshot, keeping higher-root offsets and all GL-21 data.
+No GR-8 projectile calibration is claimed; threshold/heading need runtime confirmation. Add vehicle kind/up-height
+to bounded diagnostics. All 140 tests pass; no remote push. See WEAPON_MUZZLES.md for evidence and limitations.

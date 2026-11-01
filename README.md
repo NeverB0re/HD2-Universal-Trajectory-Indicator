@@ -69,12 +69,12 @@ Loader and enable both.
 ## Working on it
 
 Current completion work and validation boundaries: [DEVELOPMENT_STEPS.md](DEVELOPMENT_STEPS.md).
-`1.1.1-test.9` uses fixed weapon/context aiming corrections, replacing live weapon-angle learning that could
-carry a passenger correction into on-foot aim. GL-21 uses offline-measured geometry profiles; other weapons and
-vehicle aiming still use explicitly unmeasured fixed defaults. Live muzzle/heading/movement/flight calculation
-continues. A raised-weapon check hides the recorded FRV driver pose. Passive shot logs now reserve budget per
+`1.1.1-test.10` uses fixed weapon/context aiming corrections, replacing live weapon-angle learning that could
+carry a passenger correction into on-foot aim. GL-21 uses offline-measured geometry profiles; GR-8 has an explicitly estimated low-root yaw correction. Other
+weapon/vehicle aiming uses unmeasured fixed defaults. Live muzzle/heading/movement/flight calculation
+continues. The FRV raised-weapon check now includes the supply variant omitted in test.9. Passive shot logs now reserve budget per
 weapon/profile. See [WEAPON_MUZZLES.md](WEAPON_MUZZLES.md) for data, limits and the focused test.
-All 138 offline tests pass; test.9 gameplay and passenger accuracy remain unverified. Grenade fitting and saved
+All 140 offline tests pass. GL-21 test.9 alignment was user-confirmed; test.10 driver/GR-8 changes await gameplay confirmation. Grenade fitting and saved
 calibration are unchanged from the user-accepted test.4. Existing stratagem/C4 behavior, native
 grenade profiles and automatic learning remain.
 
