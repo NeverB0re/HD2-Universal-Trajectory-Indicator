@@ -9,7 +9,7 @@
 -- Transmog's catalog (Nexus 16633).
 local chef = ...
 local M = {}
-local VERSION = '1.1.1-test.c2'
+local VERSION = '1.1.1-test.c3'
 
 if chef.has and chef.has('own_log') then chef.own_log('throwable_arcs') end
 local function log(fmt, ...) chef.log(fmt, ...) end
@@ -1054,47 +1054,58 @@ local function weapon_profile(kind, u)
   return AIM_OFF
 end
 
--- While the camera turns, the game's aim lags it (its small aim circle) and the barrel with it. Lag = the barrel off the
--- camera now, less how far off it sat when last settled. A held camera gives none however the barrel moves: rounds
--- followed the camera with the barrel 12 degrees off, still rising.
-AIMING.lag = (function()
-  local FROM, FULL, RISE, FALL, SETTLE = math.rad(8), math.rad(40), 0.05, 0.2, 0.15
-  local unit, at, cy, cp, base_y, base_p, weight
-  local function wrap(a) return (a + math.pi) % (2 * math.pi) - math.pi end
-  return function(c, u)
-    local fx, fy, fz = chef.unit_rotation(u)
-    if type(fx) ~= 'number' then return 0, 0 end
-    local t, yaw, pitch = now(), math.atan2(c.fy, c.fx), camera_pitch(c)
-    local off_y = wrap(math.atan2(fy, fx) - yaw)
-    local off_p = math.atan2(fz, math.sqrt(fx * fx + fy * fy)) - pitch
-    local dt = at and t - at or 0
-    if unit ~= u or dt > 0.25 then
-      unit, base_y, base_p, weight = u, off_y, off_p, 0
-    elseif dt > 0 then
-      local speed = math.sqrt((wrap(yaw - cy) * math.cos(pitch)) ^ 2 + (pitch - cp) ^ 2) / dt
-      local want = math.max(0, math.min(1, (speed - FROM) / (FULL - FROM)))
-      weight = weight + (want - weight) * (1 - math.exp(-dt / (want > weight and RISE or FALL)))
-      if speed < FROM then
-        local k = 1 - math.exp(-dt / SETTLE)
-        base_y, base_p = base_y + wrap(off_y - base_y) * k, base_p + (off_p - base_p) * k
-      end
+-- The game's own aim: the animation's target 'aim_constraint_target', a point about 100 m down the line it aims along
+-- (test.c2: 1.3 cm off the line from the muzzle through the point the weapon is on, at 87 m). It follows the game's aim
+-- as the camera turns and bends toward a near wall, so nothing here is worked out per weapon, pose or turn. Found once
+-- per helldiver and world, read once a frame. Nil while it can't be read.
+AIMING.target = (function()
+  local NAME, RETRY = 'aim_constraint_target', 5
+  local unit, world, index, retry, checked
+  local function call(name, ...) return chef.call_kind(name, 'aim target', ...) end
+  return function()
+    if not (me_unit and chef.unit_alive(me_unit)) then return nil end
+    local w, t = chef.world_id(), now()
+    if unit ~= me_unit or world ~= w then unit, world, index, retry, checked = me_unit, w, nil, 0, false end
+    if not index then
+      if t < retry then return nil end
+      retry = t + RETRY
+      if call('Unit.animation_has_constraint_target', me_unit, NAME) ~= true then return nil end
+      local i = call('Unit.animation_find_constraint_target', me_unit, NAME)
+      if type(i) ~= 'number' then return nil end
+      index = i
+      log('aim target: %s is target %d of my helldiver', NAME, i)
     end
-    at, cy, cp = t, yaw, pitch
-    return weight * wrap(off_y - base_y), weight * (off_p - base_p)
+    local m = call('Unit.animation_get_constraint_target', me_unit, index)
+    if not m then return nil end
+    if not checked then
+      if call('Script.type_name', m) ~= 'Matrix4x4' then index, retry = nil, t + RETRY; return nil end
+      checked = true
+    end
+    local at = call('Matrix4x4.translation', m)
+    local x, y, z = nil, nil, nil
+    if at then x, y, z = call('Vector3.to_elements', at) end
+    if type(x) == 'number' and type(y) == 'number' and type(z) == 'number' and x == x and y == y and z == z then
+      return x, y, z
+    end
+    return nil
   end
 end)()
 
--- The round leaves the muzzle for the point under the crosshair, whatever the barrel does. 47 tracked rounds (standing,
--- crouched, prone, twisted, seated; GL-21, GR-8, CB-9, P-34) fit that within 0.16 degrees on average given the point's
--- distance; the barrel is off by 1.9 (2.0 lying prone, with its pose, not with the shot). That distance can't be read
--- yet, so AIMING.TARGET stands in (0.40 degrees lying prone, 1.19 for the fixed corrections it replaces).
+-- The round leaves the muzzle along that line. If it can't be read: toward the point AIMING.TARGET m under the crosshair
+-- (47 tracked rounds fly from the muzzle to a point on the camera's line whatever the barrel does: 0.16 degrees off on
+-- average given that point's distance, the barrel 1.89).
 AIMING.TARGET = 100
 local function weapon_aim(c, kind, u, muzzle)
   if not muzzle then return nil, 'camera' end
-  local d = AIMING.TARGET
-  local x, y, z = c.x + c.fx * d - muzzle[1], c.y + c.fy * d - muzzle[2], c.z + c.fz * d - muzzle[3]
-  local lag_y, lag_p = AIMING.lag(c, u)
-  return { math.atan2(y, x) + lag_y, math.atan2(z, math.sqrt(x * x + y * y)) + lag_p }, 'crosshair'
+  local d, mode = AIMING.TARGET, 'crosshair'
+  local x, y, z = c.x + c.fx * d, c.y + c.fy * d, c.z + c.fz * d
+  local tx, ty, tz = AIMING.target()
+  if tx then
+    local far = (tx - muzzle[1]) ^ 2 + (ty - muzzle[2]) ^ 2 + (tz - muzzle[3]) ^ 2
+    if far > 400 and far < 40000 then x, y, z, mode = tx, ty, tz, 'aim-target' end
+  end
+  x, y, z = x - muzzle[1], y - muzzle[2], z - muzzle[3]
+  return { math.atan2(y, x), math.atan2(z, math.sqrt(x * x + y * y)) }, mode
 end
 
 -- DEVELOPMENT_WEAPON_TRACE_BEGIN
@@ -1116,62 +1127,27 @@ local weapon_diagnostic = (function()
     local units = chef.call('World.units', chef.world())
     return type(units) == 'table' and units or {}
   end
-  -- test.c2: looking for the distance to what the crosshair is on. Nothing here changes what is drawn. By itself while
-  -- aiming: the fields of my helldiver that test.c1 read without trouble, and the camera's line against the boxes of the
-  -- units near it (Unit.box, as Engine Probe 0.2.1 read them). test.c1 ended the game while it turned the field 98b4aaf0's
-  -- value into numbers, so the other fields and the animation's constraint targets wait for F8, one at a time, each
-  -- saved before it is tried: one that ends the game is passed over the next time.
+  -- test.c3: which line does the round take? Beside the animation's target: my helldiver's network fields af97ede7 (test.c2:
+  -- on the camera's line to the cm, 89.75 m off) and bdc1cb8a (on the line to the target). Read only, while aiming: four
+  -- times a second, twenty while the camera turns, every frame around a click, and the frames before it.
   local aim_probe = (function()
-    local PLAYER, AVATAR, AVATAR_OF, RUNTIME = 'un6y1d', 'vvhx8ga', 'u4d1h9a', '46cab355bd8d4d37'
-    local QUICK = { 'a5f83fa0', 'edbf0131', 'e3186939', '3a2b4f15', '8bbeb160' }
-    local NAMES = { 'weapon_aim', 'aim_weapon', 'boss_aim', 'aim', 'aim_target', 'look_at', 'aim_constraint_target',
-                    'aim_constraint', 'look_target', 'head_aim', 'torso_aim', 'upper_body_aim', 'weapon_target' }
-    local names, order = {}, {}
-    for id, name in ('98b4aaf0:ngg1nly cd889dbc:i7j8yyl 6ff0e58a:rmgiapw 5faee212:aa431co 7870bb31:lbf26st e3186939:p6m0z7a '
-      .. 'af97ede7:x4joxek bdc1cb8a:rm_qp0d 4b7fae39:ttw6nwy b463e168:yfgmk2i 27c07e3e:an2e2ut 248ff28e:pf64hpz '
-      .. '913af9a2:naal92j 0c09236b:pjr88b0 eef04e89:rnigvgq cf55c86e:iypkmzp a5f83fa0:ada677g 9256767e:x3bdatt '
-      .. '7f6b358d:iy3xd_y a09ccd0a:x_e3yr7 b19ad128:gwz2gww 50ac6619:vzndz8f 8bbeb160:cluqbez 3c01f356:ep100t9 '
-      .. '20efbed4:pgqdzdb d6a4a959:x61a3p5 d49efb40:tufda6u 1aaa6ff0:t5hew7o aea15b36:lcf03kp 8df7fe03:nap6fmy '
-      .. 'b3b69c52:dcbv3hk 1510fa6a:gvhcmse 75536352:em7on_f 268ac291:pfj5c_n dab52fe8:wamrkdl 0565f571:x5ny2ib '
-      .. '169d5ed7:abke0hp 82830aed:x87gzh4 cad5b537:pj4spwo 9ddf0683:jadmb2q 95417727:k65juvf cb0453ea:k7qhi2j '
-      .. '9d550ad3:x9l9mbv bbecde19:aco491e 8fd2d63e:pu8i2y9 2bbcabe5:pkljzl2 d1930672:end4ryz 95c46304:v1p53tp '
-      .. '788b9753:anmjxyi 99901914:eprutg3 1dd07f05:z9y2u4v 39d141d6:cm6zyi0 c336a25c:pifiw5e d7082cbf:nd6ie1n '
-      .. 'be76ee23:bb06lo8 d92082f9:k51bt05 5f8eb478:cjotcdb 8d874f55:ty0yfzj edbf0131:acsj7f5 2932144a:pfy98bc '
-      .. '4441caf8:w4z5a0q c58881d5:ngj6wse 3a2b4f15:nccore8 b2205a6e:txovnjp 1023782c:k7rgyet ce125651:emkftkf '
-      .. 'e4d00fe1:abihmme dae681f4:v1jbchd 6d976352:eu7kgzm a33df340:gs_bq2f c20428c6:vy71z3q 6d1d5cfb:neazbi8'):gmatch('(%x+):(%S+)') do
-      names[id] = name; order[#order + 1] = id
-    end
-    local state = { quick = 0, next_quick = 0, next_look = 0, after_click = 0, key = false, targets = {} }
-    local boxes = {}
+    local PLAYER, AVATAR, AVATAR_OF = 'un6y1d', 'vvhx8ga', 'u4d1h9a'
+    local FIELDS = { { 'af97ede7', 'x4joxek', 'hit' }, { 'bdc1cb8a', 'rm_qp0d', 'weapon-hit' } }
+    local state = { lines = 0, next = 0, next_look = 0, after_click = 0, ring = {} }
     local function call(name, tag, ...) return chef.call_kind(name, 'aim probe ' .. tag, ...) end
-    local function declared(type_name)
-      local info = call('Network.object_info', 'objinfo ' .. type_name, type_name)
+    local function declared()
+      local info = call('Network.object_info', 'objinfo', AVATAR)
       if type(info) ~= 'table' or type(info.fields) ~= 'table' then return nil end
       local set = {}
       for _, f in ipairs(info.fields) do
         local id = type(f) == 'table' and f.id
         if type(id) == 'number' then id = string.format('%x', id) end
-        if type(id) == 'string' then
-          id = string.gsub(string.lower(id), '^0+', '')
-          set[string.rep('0', 8 - #id) .. id] = true
-        end
+        if type(id) == 'string' then set[(string.gsub(string.lower(id), '^0+', ''))] = true end
       end
       return set
     end
-    -- (names only: nothing in it is called)
-    local function s3d_names()
-      local t = rawget(_G, 's3d')
-      if type(t) ~= 'table' then log('s3d: not reachable (%s)', type(t)) return end
-      local bits = {}
-      for k, v in pairs(t) do bits[#bits + 1] = tostring(k) .. ':' .. type(v) end
-      table.sort(bits)
-      for i = 1, #bits, 25 do log('s3d: %s', table.concat(bits, ' ', i, math.min(i + 24, #bits))) end
-    end
     local function find_avatar(gs)
-      if state.world ~= chef.world_id() then
-        state.world, state.avatar, state.scan, state.fields = chef.world_id(), nil, nil, nil
-        state.targets = {}
-      end
+      if state.world ~= chef.world_id() then state.world, state.avatar, state.scan, state.ring = chef.world_id(), nil, nil, {} end
       if state.avatar then
         if call('GameSession.game_object_exists', 'exists', gs, state.avatar) == true
            and call('GameSession.game_object_is_type', 'type', gs, state.avatar, AVATAR) == true then return state.avatar end
@@ -1206,156 +1182,45 @@ local weapon_diagnostic = (function()
       if scan.at > #scan.list then state.scan = nil end
       return nil
     end
-    -- (engine values are good for this frame only: to numbers at once, never kept; only by the kind they say they are)
-    local function text(v)
-      local kind = type(v)
-      if kind == 'number' then return string.format('%.5f', v) end
-      if v == nil or kind == 'boolean' or kind == 'string' then return tostring(v) end
-      local name = call('Script.type_name', 'type name', v)
-      if name == 'Vector3' then
-        local x, y, z = call('Vector3.to_elements', 'vector', v)
-        return string.format('%.4f,%.4f,%.4f', tonumber(x) or 0 / 0, tonumber(y) or 0 / 0, tonumber(z) or 0 / 0)
-      elseif name == 'Quaternion' then
-        local x, y, z, w = call('Quaternion.to_elements', 'quaternion', v)
-        return string.format('q%.4f,%.4f,%.4f,%.4f', tonumber(x) or 0 / 0, tonumber(y) or 0 / 0, tonumber(z) or 0 / 0,
-                             tonumber(w) or 0 / 0)
-      elseif name == 'Matrix4x4' then
-        local at = call('Matrix4x4.translation', 'matrix', v)
-        return 'at ' .. (at and text(at) or '?')
-      end
-      return tostring(name or kind)
-    end
-    local function read(gs, avatar, id)
-      if not state.fields[id] then return 'undeclared' end
-      return text(call('GameSession.game_object_field', 'field ' .. id, gs, avatar, names[id]))
-    end
-    local function ready_avatar()
-      local gs = call('Network.game_session', 'session')
-      local avatar = gs and find_avatar(gs)
-      if not avatar then return nil end
-      if not state.fields then
-        state.fields = declared(AVATAR)
-        if not state.fields then return nil end
-      end
-      return gs, avatar
-    end
-    -- every unit once per world (800 a frame), then only those within 30 m of the line are asked for their box
-    local function list_boxes()
-      if boxes.world ~= chef.world_id() then
-        boxes = { world = chef.world_id(), list = {}, at = 1, units = all_units() }
-      end
-      local units = boxes.units
-      if not units then return end
-      for i = boxes.at, math.min(boxes.at + 799, #units) do
-        local u = units[i]
-        if chef.unit_alive(u) then
-          local kind = chef.unit_kind(u)
-          if kind and kind ~= RUNTIME then
-            local x, y, z = chef.unit_position(u)
-            if x then boxes.list[#boxes.list + 1] = { u, kind, x, y, z } end
-          end
-        end
-      end
-      boxes.at = boxes.at + 800
-      if boxes.at > #units then
-        boxes.units = nil
-        log('aim box: %d of %d units listed', #boxes.list, #units)
-      end
-    end
-    local function box_hits(c, t, label)
-      local V = rawget(_G, 'Vector3') or (rawget(_G, 'stingray') or {}).Vector3
-      if boxes.units or not boxes.list or not V then return end
-      local from, dir = V(c.x, c.y, c.z), V(c.fx, c.fy, c.fz)
-      local hits, asked = {}, 0
-      for _, e in ipairs(boxes.list) do
-        local dx, dy, dz = e[3] - c.x, e[4] - c.y, e[5] - c.z
-        local along = dx * c.fx + dy * c.fy + dz * c.fz
-        if along > -30 and along < 500 and asked < 200
-           and dx * dx + dy * dy + dz * dz - along * along < 900 and chef.unit_alive(e[1]) then
-          asked = asked + 1
-          local pose, half = chef.call_kind('Unit.box', e[2], e[1])
-          if pose and half then
-            local hit = chef.call('Math.ray_box_intersection', from, dir, pose, half)
-            if type(hit) == 'number' and hit >= 0 then
-              local hx, hy, hz = chef.call('Vector3.to_elements', half)
-              hits[#hits + 1] = { hit, e[2], tonumber(hx) or 0, tonumber(hy) or 0, tonumber(hz) or 0 }
-            end
-          end
-        end
-      end
-      table.sort(hits, function(a, b) return a[1] < b[1] end)
-      local bits = {}
-      for i = 1, math.min(8, #hits) do
-        local h = hits[i]
-        bits[i] = string.format('%.2f:%s:%.1f,%.1f,%.1f', h[1], h[2], h[3], h[4], h[5])
-      end
-      log('aim box t=%.6f %s asked=%d hits=%d %s', t, label, asked, #hits, table.concat(bits, ' '))
-    end
-    local function read_targets(t)
-      for _, target in ipairs(state.targets) do
-        local m = call('Unit.animation_get_constraint_target', 'target ' .. target[1], me_unit, target[2])
-        log('aim target t=%.6f %s %s', t, target[1], text(m))
-      end
-    end
-    -- F8: the rest, one at a time, each saved before it is tried
-    local function risky(c, t)
-      local saved = chef.load_table and chef.load_table('aim_probe_steps')
-      local done = type(saved) == 'table' and saved or {}
-      local gs, avatar = ready_avatar()      -- (first: a new world starts the targets over)
-      local function step(id, fn)
-        if done[id] then return end
-        done[id] = true
-        if chef.save_table then chef.save_table('aim_probe_steps', done) end
-        log('aim step %s', id)
-        fn()
-      end
-      if me_unit and chef.unit_alive(me_unit) then
-        step('state machine', function()
-          log('aim step: state machine %s', tostring(call('Unit.has_animation_state_machine', 'state machine', me_unit)))
-        end)
-        for _, name in ipairs(NAMES) do
-          step('target ' .. name, function()
-            local has = call('Unit.animation_has_constraint_target', 'has target', me_unit, name)
-            log('aim step: target %s has=%s', name, tostring(has))
-            if has == true then
-              local index = call('Unit.animation_find_constraint_target', 'find target', me_unit, name)
-              log('aim step: target %s index=%s', name, tostring(index))
-              if type(index) == 'number' then
-                log('aim step: target %s value=%s', name,
-                    text(call('Unit.animation_get_constraint_target', 'target ' .. name, me_unit, index)))
-                state.targets[#state.targets + 1] = { name, index }
-              end
-            end
-          end)
-        end
-      end
-      if gs then
-        for _, id in ipairs(order) do
-          step('field ' .. id, function() log('aim step: field %s=%s', id, read(gs, avatar, id)) end)
-        end
-      end
-      log('aim step: finished')
+    -- (only by the kind it says it is: test.c1 ended the game making numbers of a table)
+    local function field_text(gs, avatar, f)
+      if not state.fields[(string.gsub(f[1], '^0+', ''))] then return 'undeclared' end
+      local v = call('GameSession.game_object_field', 'field ' .. f[1], gs, avatar, f[2])
+      if v == nil or type(v) == 'table' or type(v) == 'string' then return type(v) end
+      if call('Script.type_name', 'type name', v) ~= 'Vector3' then return 'other' end
+      local x, y, z = call('Vector3.to_elements', 'vector', v)
+      if type(x) ~= 'number' then return 'other' end
+      return string.format('%.4f,%.4f,%.4f', x, y, z)
     end
     return function(c, muzzle, clicked, t)
-      if not state.s3d then state.s3d = true; s3d_names() end
-      list_boxes()
-      local key = chef.key_down('f8') == true
-      if key and not state.key then risky(c, t) end
-      state.key = key
-      if clicked then state.after_click = 4 end
-      if not (state.after_click > 0 or (t >= state.next_quick and state.quick < 1500)) then return end
-      local label = clicked and 'click' or (state.after_click > 0 and 'after' or 'aiming')
-      state.quick, state.next_quick = state.quick + 1, t + 0.5
-      if state.after_click > 0 then state.after_click = state.after_click - 1 end
-      local gs, avatar = ready_avatar()
-      local bits = {}
-      if gs then
-        for _, id in ipairs(QUICK) do bits[#bits + 1] = id .. '=' .. read(gs, avatar, id) end
+      local tx, ty, tz = AIMING.target()
+      local target = tx and string.format('%.4f,%.4f,%.4f', tx, ty, tz) or 'none'
+      local last = state.ring[#state.ring]
+      local turning = last and last.fx * c.fx + last.fy * c.fy + last.fz * c.fz < 0.99996
+      if clicked then
+        state.after_click = 6
+        for _, h in ipairs(state.ring) do
+          log('aim pre t=%.6f dt=%.6f camera=%.4f,%.4f,%.4f forward=%.6f,%.6f,%.6f target=%s',
+              t, h.t - t, h.x, h.y, h.z, h.fx, h.fy, h.fz, h.target)
+        end
       end
-      log('aim quick t=%.6f %s camera=%.4f,%.4f,%.4f forward=%.6f,%.6f,%.6f muzzle=%.4f,%.4f,%.4f feet=%s %s',
-          t, label, c.x, c.y, c.z, c.fx, c.fy, c.fz, muzzle[1], muzzle[2], muzzle[3], tostring(feet_z), table.concat(bits, ' '))
-      box_hits(c, t, label)
-      read_targets(t)
+      state.ring[#state.ring + 1] = { t = t, x = c.x, y = c.y, z = c.z, fx = c.fx, fy = c.fy, fz = c.fz, target = target }
+      if #state.ring > 12 then table.remove(state.ring, 1) end
+      if not (state.after_click > 0 or (t >= state.next and state.lines < 3000)) then return end
+      local label = clicked and 'click' or (state.after_click > 0 and 'after' or (turning and 'turning' or 'aiming'))
+      state.lines, state.next = state.lines + 1, t + (turning and 0.05 or 0.25)
+      if state.after_click > 0 then state.after_click = state.after_click - 1 end
+      local gs = call('Network.game_session', 'session')
+      local avatar = gs and find_avatar(gs)
+      local bits = {}
+      if avatar then
+        state.fields = state.fields or declared()
+        if state.fields then
+          for _, f in ipairs(FIELDS) do bits[#bits + 1] = f[3] .. '=' .. field_text(gs, avatar, f) end
+        end
+      end
+      log('aim quick t=%.6f %s camera=%.4f,%.4f,%.4f forward=%.6f,%.6f,%.6f muzzle=%.4f,%.4f,%.4f target=%s %s',
+          t, label, c.x, c.y, c.z, c.fx, c.fy, c.fz, muzzle[1], muzzle[2], muzzle[3], target, table.concat(bits, ' '))
     end
   end)()
   local function vector(label, x, y, z)
@@ -1443,6 +1308,10 @@ local weapon_diagnostic = (function()
                   or (height < 1 and 'crouch' or 'standing'))
       end
       local key = profile and (kind .. '/' .. profile[3] .. '/' .. stance)
+      local before = history[#history]
+      if key and before and before[13] * c.fx + before[14] * c.fy + before[15] * c.fz < 0.99996 then
+        key = key .. '/turning'
+      end
       if down and not previous and w and muzzle and count < 16 and (budgets[key] or 0) < 3 then
         if sample then finish_sample() end
         budgets[key] = (budgets[key] or 0) + 1
