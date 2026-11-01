@@ -1692,46 +1692,51 @@ class ArcTest(unittest.TestCase):
     def yaw_error(a, b):
         return (a - b + 180) % 360 - 180
 
-    def test_recorded_standing_crouched_prone_rounds_after_aim_settles(self):
+    def test_recorded_standing_crouched_prone_rounds_use_fixed_profiles_immediately(self):
         gun = self.weapon_in_hand(self.GL)
         self.fake['mouse']['right'] = True
         flights = self.direction_flights()
-        # Actual sequence including returning to standing. No fabricated stance labels in runtime code.
+        # Actual sequence including returning to standing. Fixed geometry bands have no learned history.
         for n in ('3', '4', '5', '6', '7', '8', '9'):
             with self.subTest(shot=n):
+                self.setUp()
+                gun = self.weapon_in_hand(self.GL)
+                self.fake['mouse']['right'] = True
                 row = flights[n]
                 self.apply_direction_flight(gun, row)
-                self.frames(120)
+                self.frames(1)
                 a, b = row['samples'][0], row['samples'][-1]
                 actual = math.degrees(math.atan2(b[3] - a[3], b[2] - a[2]))
                 self.assertLess(abs(self.yaw_error(self.drawn_yaw(), actual)), .4)
                 self.assertLess(math.dist(a[2:], row['vectors']['muzzle-position']), .02)
 
-    def test_large_corner_deflection_is_not_learned_even_after_prone_offset(self):
+    def test_fixed_profile_preserves_corner_deflection(self):
+        row = self.direction_flights()['8']
         gun = self.weapon_in_hand(self.GL)
+        self.apply_direction_flight(gun, row)
         self.fake['mouse']['right'] = True
-        def point(degrees):
-            a = math.radians(degrees)
-            gun.f = self.lua.table_from((math.cos(a), math.sin(a), math.sin(math.radians(1.5))))
-        point(-2.3)
-        self.frames(150)
-        self.assertAlmostEqual(self.drawn_yaw(), 0, delta=.05)
-        point(-5.3)
+        self.frames(1)
+        before = self.drawn_yaw()
+        root = row['vectors']['root-forward']
+        a = math.atan2(root[1], root[0]) - math.radians(5.3)
+        gun.f = self.lua.table_from((math.cos(a), math.sin(a), root[2]))
+        self.frames(1)
+        first = self.drawn_yaw()
         self.frames(180)
-        self.assertAlmostEqual(self.drawn_yaw(), -3, delta=.05,
-                               msg='the existing 2.3 degree offset is retained, not learned toward the corner')
+        self.assertAlmostEqual(self.yaw_error(first, before), -5.3, delta=.08)
+        self.assertAlmostEqual(self.drawn_yaw(), first, delta=.001)
 
-    def test_yaw_learning_is_independent_of_outlying_pitch(self):
-        # GP-20 shot 1: the pitch gate previously also prevented an otherwise valid yaw correction.
+    def test_unmeasured_weapon_has_fixed_fallback_without_camera_learning(self):
         row = self.direction_flights()['1']
         gun = self.weapon_in_hand('9eb160830321bfd6')
         self.apply_direction_flight(gun, row)
         self.fake['mouse']['right'] = True
+        self.frames(1)
+        first = self.lines()
         self.frames(120)
-        cam = row['vectors']['camera-forward']
-        self.assertAlmostEqual(self.drawn_yaw(), math.degrees(math.atan2(cam[1], cam[0])), delta=.05)
+        self.assertEqual(self.lines(), first)
 
-    def test_prone_yaw_settles_at_different_frame_rates(self):
+    def test_fixed_prone_yaw_has_no_settling_at_different_frame_rates(self):
         row = self.direction_flights()['8']
         results = []
         for hz in (30, 60, 120):
@@ -1739,11 +1744,107 @@ class ArcTest(unittest.TestCase):
             gun = self.weapon_in_hand(self.GL)
             self.apply_direction_flight(gun, row)
             self.fake['mouse']['right'] = True
+            self.frames(1, dt=1 / hz)
+            first = self.drawn_yaw()
             self.frames(round(2 * hz), dt=1 / hz)
-            cam = row['vectors']['camera-forward']
-            results.append(self.yaw_error(self.drawn_yaw(), math.degrees(math.atan2(cam[1], cam[0]))))
-        self.assertLess(max(map(abs, results)), .07)
-        self.assertLess(max(results) - min(results), .005)
+            self.assertAlmostEqual(self.drawn_yaw(), first, delta=.001)
+            results.append(first)
+        self.assertLess(max(results) - min(results), .001)
+
+    def test_getting_out_of_vehicle_restores_the_same_profile_immediately(self):
+        self.weapon_in_hand(self.GL)
+        self.fake['mouse']['right'] = True
+        self.frames(2)
+        before = self.lines()
+        car = self.vehicle_at(1.9, .3, -.6)
+        self.frames(120)
+        car.dead = True
+        self.frames(1)
+        self.assertEqual(self.lines(), before)
+        self.frames(120)
+        self.assertEqual(self.lines(), before)
+
+    def apply_vehicle_snapshot(self, gun, n):
+        with open(os.path.join(HERE, 'fixtures', 'weapon_direction_test8.json'), encoding='utf-8') as f:
+            lines = json.load(f)['vehicle_snapshots'][str(n)]
+        points = {}
+        for line in lines:
+            name, _, rest = line.partition(' ')
+            if name in ('camera-position', 'camera-forward', 'feet', 'right-hand', 'weapon-root', 'weapon-forward', 'muzzle'):
+                points[name] = tuple(map(float, rest.split()))
+        for obj, name in ((self.fake.cam, 'camera-position'), (self.fake.me, 'feet'), (gun, 'weapon-root')):
+            for key, v in zip(('x', 'y', 'z'), points[name]):
+                obj[key] = v
+        for key, v in zip(('fx', 'fy', 'fz'), points['camera-forward']):
+            self.fake.cam[key] = v
+        gun.f = self.lua.table_from(points['weapon-forward'])
+        self.fake.me.nodes = self.lua.table_from({7: self.lua.table_from(points['right-hand'])})
+        self.weapon_nodes(gun, points['muzzle'])
+
+    def test_recorded_frv_driver_is_hidden_and_passenger_is_preserved(self):
+        for n in (2, 4, 6, 9, 10, 11, 12, 13):
+            with self.subTest(snapshot=n):
+                self.setUp()
+                gun = self.weapon_in_hand('fe3b29b2cfa63f9b')
+                self.fake.me.named_nodes = self.lua.table_from({'attach_hand_r': 7})
+                self.frames(1)  # retain the already identified player when the vehicle camera moves beyond 6m
+                self.apply_vehicle_snapshot(gun, n)
+                self.vehicle_at(self.fake.me.x + .4, self.fake.me.y + .3, self.fake.me.z - .6)
+                self.fake['mouse']['right'] = True
+                self.frames(1)
+                if n < 9:
+                    self.assertGreater(len(self.lines()), 20)
+                else:
+                    self.assertEqual(self.lines(), [])
+                    self.assertIn('FRV weapon not raised for aiming', self.logs())
+
+    def test_prone_soldier_on_ground_beside_frv_is_preserved(self):
+        gun = self.weapon_in_hand(self.GL)
+        gun.z = .3
+        self.vehicle_at(1.9, .3, .4)
+        self.fake['mouse']['right'] = True
+        self.frames(1)
+        self.assertGreater(len(self.lines()), 20)
+
+    def test_fixed_geometry_profiles_switch_without_aiming_delay(self):
+        gun = self.weapon_in_hand(self.GL)
+        self.fake['mouse']['right'] = True
+        for height, expected in ((.3, 1.84), (.7, .13), (1.2, -.06), (.3, 1.84)):
+            gun.z = height
+            self.frames(1)
+            first = self.drawn_yaw()
+            self.assertAlmostEqual(first, expected, delta=.08)
+            self.frames(120)
+            self.assertAlmostEqual(self.drawn_yaw(), first, delta=.001)
+
+    def test_fixed_profiles_follow_recorded_early_flight_height(self):
+        # Uses real positions, not the fitted coefficients, to validate the whole rendered vertical path.
+        for filename in ('weapon_direction_test6.json', 'weapon_direction_test8.json'):
+            with open(os.path.join(HERE, 'fixtures', filename), encoding='utf-8') as f:
+                rows = json.load(f)['shots']
+            for n in ('3', '4', '5', '6', '7', '8', '9'):
+                with self.subTest(source=filename, shot=n):
+                    self.setUp()
+                    gun = self.weapon_in_hand(self.GL)
+                    row = rows[n]
+                    self.apply_direction_flight(gun, row)
+                    self.fake['mouse']['right'] = True
+                    self.frames(1)
+                    samples = row['samples']
+                    origin, end = samples[0][2:], samples[-1][2:]
+                    length = math.hypot(end[0] - origin[0], end[1] - origin[1])
+                    hx, hy = (end[0] - origin[0]) / length, (end[1] - origin[1]) / length
+                    vertices = [point for line in self.lines() for point in (line[:3], line[3:])]
+                    points = sorted(((p[0] - origin[0]) * hx + (p[1] - origin[1]) * hy, p[2]) for p in vertices)
+                    for sample in samples[1:]:
+                        s = (sample[2] - origin[0]) * hx + (sample[3] - origin[1]) * hy
+                        for (a, z1), (b, z2) in zip(points, points[1:]):
+                            if a <= s <= b and b > a:
+                                predicted = z1 + (z2 - z1) * (s - a) / (b - a)
+                                self.assertLess(abs(predicted - sample[4]), .25)
+                                break
+                        else:
+                            self.fail('rendered arc does not reach the recorded early-flight sample')
 
     def test_vehicle_aim_diagnostic_is_idle_on_foot(self):
         self.weapon_in_hand(self.GL)
@@ -1833,7 +1934,48 @@ class ArcTest(unittest.TestCase):
             self.frames(25)
             self.fake['mouse']['left'] = False
             self.frames(1)
-        self.assertEqual(self.logs().count(' shot t='), 9)
+        self.assertEqual(self.logs().count(' shot t='), 3)
+        self.assertFalse(self.direction_watch().active)
+
+    def test_probe_keeps_a_separate_vehicle_context_budget(self):
+        self.weapon_in_hand(self.GL)
+        self.fake['mouse']['right'] = True
+        self.frames(2)
+        for _ in range(4):
+            self.fake['mouse']['left'] = True
+            self.frames(25)
+            self.fake['mouse']['left'] = False
+            self.frames(1)
+        self.assertEqual(self.logs().count(' shot t='), 3)
+        self.vehicle_at(1.9, .3, -.6)
+        self.frames(2)
+        self.fake['mouse']['left'] = True
+        self.frames(25)
+        self.assertEqual(self.logs().count(' shot t='), 4)
+        self.assertIn('profile=vehicle/unmeasured fixed=true', self.logs())
+
+    def test_direction_recording_is_globally_bounded_across_profiles(self):
+        gun = self.weapon_in_hand(self.GL)
+        self.fake['mouse']['right'] = True
+        self.frames(2)
+        def burst():
+            for _ in range(3):
+                self.fake['mouse']['left'] = True
+                self.frames(25)
+                self.fake['mouse']['left'] = False
+                self.frames(1)
+        for height in (.3, .7, 1.2):
+            gun.z = height
+            burst()
+        gun.dead = True
+        gun = self.weapon_in_hand('9eb160830321bfd6')
+        burst()
+        self.vehicle_at(1.9, .3, -.6)
+        burst()
+        gun.dead = True
+        self.weapon_in_hand('f49227a0630a3f7f')
+        burst()
+        self.assertEqual(self.logs().count(' shot t='), 16)
         self.assertFalse(self.direction_watch().active)
 
     def test_weapon_direction_probe_cancels_on_world_change(self):

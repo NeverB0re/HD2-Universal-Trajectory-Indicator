@@ -69,10 +69,13 @@ Loader and enable both.
 ## Working on it
 
 Current completion work and validation boundaries: [DEVELOPMENT_STEPS.md](DEVELOPMENT_STEPS.md).
-`1.1.1-test.8` retains actual animated weapon muzzle nodes and adds prone weapon display, with sight-node proximity
-refining first-person hiding. Installed-asset evidence and the focused runtime check are in
-[WEAPON_MUZZLES.md](WEAPON_MUZZLES.md). The user reports grenade arcs fit well after test.4; its fitting and saved
-calibration are unchanged. The user confirmed muzzle alignment/prone display and later reported prone direction error in test.6. Its recorded shots expose a frozen yaw correction; test.7 corrects stationary yaw learning while preserving aim lag and large corner deflections. Test.8 includes that correction plus bounded vehicle aim snapshots for reported passenger error and false driver arcs. Those vehicle issues remain unresolved. All 131 offline tests pass; test.7/8 gameplay accuracy remains unverified. Existing stratagem/C4 behavior, native
+`1.1.1-test.9` uses fixed weapon/context aiming corrections, replacing live weapon-angle learning that could
+carry a passenger correction into on-foot aim. GL-21 uses offline-measured geometry profiles; other weapons and
+vehicle aiming still use explicitly unmeasured fixed defaults. Live muzzle/heading/movement/flight calculation
+continues. A raised-weapon check hides the recorded FRV driver pose. Passive shot logs now reserve budget per
+weapon/profile. See [WEAPON_MUZZLES.md](WEAPON_MUZZLES.md) for data, limits and the focused test.
+All 138 offline tests pass; test.9 gameplay and passenger accuracy remain unverified. Grenade fitting and saved
+calibration are unchanged from the user-accepted test.4. Existing stratagem/C4 behavior, native
 grenade profiles and automatic learning remain.
 
 ```bash

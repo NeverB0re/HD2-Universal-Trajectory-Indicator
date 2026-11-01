@@ -9,7 +9,7 @@
 -- Transmog's catalog (Nexus 16633).
 local chef = ...
 local M = {}
-local VERSION = '1.1.1-test.8'
+local VERSION = '1.1.1-test.9'
 
 if chef.has and chef.has('own_log') then chef.own_log('throwable_arcs') end
 local function log(fmt, ...) chef.log(fmt, ...) end
@@ -789,29 +789,19 @@ end
 local WEAPON_K, WEAPON_LIFT, WEAPON_FROM = 4.7e-4, math.rad(0.6), { 1.3, -0.18, -0.35 }
 local WEAPON_STEP = 1 / 120      -- s per step of the flight
 local MUZZLE, SEG, SEG_FAR, MOST_POINTS = 0.45, 0.66, 0.015, 800   -- MUZZLE is only the unavailable-node fallback now
--- test.3: the round goes where the weapon points (the game's small aim circle), which lags the camera when turning (an
--- EAT and a GR-8 turned left fired right of the arc). Held still, a weapon points AIM_OFF off the round's way, its own
--- amount (0.2-2 degrees in the probe): learned while the camera turns less than STILL_TURN degrees/s, AIM_LEARN of the
--- difference a frame, and taken off the weapon's heading. Until learned, the camera's heading.
--- test.4: test.3 learned too eagerly (a fifth of the difference a frame, whenever the camera was still): the weapon still
--- catching up after a turn, and a weapon turned by the game toward a near corner under the crosshair (the Breacher's
--- barrel 5.3 degrees left, its round 5.1), were taken for its offset, and the arc went back to the camera too soon. Now
--- learned only once the camera and the weapon have both been still for STILL_FOR s, AIM_LEARN a frame, and never from a
--- pitch difference more than AIM_ODD degrees off what is known; it starts from AIM_OFF (weapons point 1.3-2.4 degrees above
--- their round's way, about level across, in the probe and test.3).
--- test.7: recorded prone GL-21 rounds follow camera yaw within 0.27 degrees while the root is 1.72-2.28 degrees off.
--- The old 1-degree joint yaw/pitch gate froze the standing correction. Learn yaw independently inside an absolute
--- 3-degree root/camera envelope (measured offset plus margin); keep the 5.3-degree near-corner case excluded.
--- This is a bounded model, not proof that every larger root/camera difference is a stance offset.
--- My velocity: all of it along the aim; SIDE_CARRY of it across (test.3: walking 2.2 m/s sideways, the GL's round went
--- 0.6 of it with me, test.2's Breacher 0.3; the Punisher Plasma's clearly went with me; test.3 added none).
--- Once found, the weapon in hand is kept while aiming lasts and it points within HELD_KEEP of the camera (test.2's arc
--- went away mid-turn, the weapon lagging past HELD_ALONG).
--- (in one table: the file is near Lua 5.1's 200 locals)
-local AIMING = { STILL_TURN = 8, STILL_FOR = 0.5, AIM_LEARN = 0.05, AIM_ODD = 1.0, YAW_LIMIT = 3.0, HELD_KEEP = 0.8 }
-local AIM_OFF, SIDE_CARRY = { 0, 1.5 }, 0.5
-local aim_off = {}               -- weapon kind -> { yaw, pitch } (degrees) the weapon points off the round's way
-local aim_still = { since = nil, yaw = nil, pitch = nil, t = 0 }   -- since when the camera and the weapon are still
+-- Fixed direction profiles. Never learn from camera alignment during play: a vehicle/posture observation must
+-- not change the next on-foot shot. Root direction stays live so aim lag and genuine barrel deflection remain.
+-- GL-21 profile values are offline medians of recorded flights; see tools/fit_weapon_aim.py and WEAPON_MUZZLES.md.
+local AIMING = { HELD_KEEP = 0.8 }
+local AIM_OFF, SIDE_CARRY = { 0, 1.5, 'on-foot/unmeasured' }, 0.5
+local AIM_PROFILES = {
+  vehicle = { 0, 1.5, 'vehicle/unmeasured' },
+  ['02eecd0b1fa49630'] = {
+    { -1.84, 0.75, 'on-foot/low-root' },
+    { -0.13, 0.95, 'on-foot/mid-root' },
+    { 0.06, 1.17, 'on-foot/high-root' },
+  },
+}
 -- First person: a nearby camera at the weapon's sight; root distance is only a compatibility fallback. Actual hand
 -- proximity can identify a held weapon despite a lagging barrel while prone; without the hand, retain HELD_ALONG.
 local FIRST_PERSON = 0.9          -- compatibility fallback if the sight node cannot be read
@@ -979,45 +969,31 @@ local function launch(c, w, mx, my, aim, from)
   return px, py, pz, hx * s + hy * across, hy * s - hx * across, w[1] * math.sin(pitch)
 end
 
--- where the round goes, from the weapon's heading less what it points off when held still ({ yaw, pitch } radians);
--- learns that while the camera and the weapon are still
-local function weapon_aim(c, kind, u, turning)
-  local fx, fy, fz = chef.unit_rotation(u)
-  if type(fx) ~= 'number' then return nil end
-  local wyaw, wpitch = math.deg(math.atan2(fy, fx)), math.deg(math.atan2(fz, math.sqrt(fx * fx + fy * fy)))
-  local cyaw, cpitch = math.deg(math.atan2(c.fy, c.fx)), math.deg(camera_pitch(c))
-  local st, t = aim_still, now()
-  local dt = t - st.t
-  local world = chef.world_id()
-  if st.unit ~= u or st.world ~= world or dt > 0.25 or dt <= 0 then
-    st.since, st.yaw, st.unit, st.world = nil, nil, u, world
-  end
-  local swing = 0
-  if st.yaw and t > st.t then
-    swing = math.sqrt(((wyaw - st.yaw + 180) % 360 - 180) ^ 2 + (wpitch - st.pitch) ^ 2) / (t - st.t)
-  end
-  st.yaw, st.pitch, st.t = wyaw, wpitch, t
-  if turning or swing >= AIMING.STILL_TURN then st.since = nil else st.since = st.since or t end
-  local off = aim_off[kind]
-  if not off then
-    off = { AIM_OFF[1], AIM_OFF[2] }
-    aim_off[kind] = off
-  end
-  if st.since and t - st.since >= AIMING.STILL_FOR then
-    local dyaw, dpitch = (wyaw - cyaw + 180) % 360 - 180, wpitch - cpitch
-    -- Same response as 0.05/frame at 60Hz, independent of the actual update rate.
-    local alpha = 1 - (1 - AIMING.AIM_LEARN) ^ (math.max(0, math.min(dt, 0.25)) * 60)
-    if math.abs(dyaw - AIM_OFF[1]) <= AIMING.YAW_LIMIT then
-      off[1] = off[1] + ((dyaw - off[1] + 180) % 360 - 180) * alpha
-    end
-    if math.abs(dpitch - off[2]) < AIMING.AIM_ODD then
-      off[2] = off[2] + (dpitch - off[2]) * alpha
+-- Select a fixed profile from current geometry, not elapsed aiming time or previous observations.
+-- Height bands are measured GL-21 root-height groups, not a native stance enum. Vehicle always has its own fallback.
+local function weapon_profile(kind, u)
+  local seated, _, _, up = in_vehicle()
+  if seated and up and up >= 0.35 then return AIM_PROFILES.vehicle end
+  local profiles = AIM_PROFILES[kind]
+  if profiles and me then
+    local _, _, z = chef.unit_position(u)
+    if z then
+      local height = z - me[3]
+      return profiles[height < 0.5 and 1 or (height < 1 and 2 or 3)]
     end
   end
-  return { math.rad(wyaw - off[1]), math.rad(wpitch - off[2]) }
+  return AIM_OFF
 end
 
--- Temporary test.6 direction evidence. Never changes the aim/calibration. At most nine trigger presses per load;
+local function weapon_aim(c, kind, u)
+  local fx, fy, fz = chef.unit_rotation(u)
+  if type(fx) ~= 'number' then return nil end
+  local off = weapon_profile(kind, u)
+  return { math.atan2(fy, fx) - math.rad(off[1]),
+           math.atan2(fz, math.sqrt(fx * fx + fy * fy)) - math.rad(off[2]) }
+end
+
+-- Temporary test.6 direction evidence. Never changes the aim/calibration. At most 16 presses per load and three per weapon/context;
 -- the existing loader watch scans only during each 0.35s sample window, never continuously while aiming.
 local weapon_diagnostic = (function()
   local rounds = {
@@ -1028,7 +1004,7 @@ local weapon_diagnostic = (function()
   local kinds = {}; for _, k in pairs(rounds) do kinds[k] = true end
   local watch = chef.watch and chef.watch(kinds, 0.05)
   if watch then watch.pause() end
-  local previous, count, sample = false, 0, nil
+  local previous, count, sample, budgets = false, 0, nil, {}
   local function vector(label, x, y, z)
     if type(x) == 'number' and type(y) == 'number' and type(z) == 'number' then
       log('weapon direction %d %s %.6f %.6f %.6f', count, label, x, y, z)
@@ -1037,7 +1013,10 @@ local weapon_diagnostic = (function()
   return {
     update = function(c, w, muzzle, aim, u, kind)
       local down, t = chef.mouse_down('left') == true, now()
-      if down and not previous and w and muzzle and count < 9 then
+      local profile = down and not previous and w and count < 16 and weapon_profile(kind, u)
+      local key = profile and (kind .. '/' .. profile[3])
+      if down and not previous and w and muzzle and count < 16 and (budgets[key] or 0) < 3 then
+        budgets[key] = (budgets[key] or 0) + 1
         count = count + 1
         local mx, my = my_move()
         log('weapon direction %d shot t=%.6f world=%s kind=%s hand=%s root-height=%.4f',
@@ -1053,8 +1032,8 @@ local weapon_diagnostic = (function()
         local x, y, z, vx, vy, vz = launch(c, w, mx, my, aim, muzzle)
         vector('predicted-velocity', vx, vy, vz)
         vector('player-velocity', mx, my, 0)
-        local off = aim_off[kind] or AIM_OFF
-        log('weapon direction %d offset-deg %.6f %.6f', count, off[1], off[2])
+        local off = profile
+        log('weapon direction %d offset-deg %.6f %.6f profile=%s fixed=true', count, off[1], off[2], off[3])
         if watch then
           local seen = setmetatable({}, { __mode = 'k' })
           for _, it in ipairs(watch.items) do seen[it.unit] = true end
@@ -1734,12 +1713,24 @@ end)()
 -- the weapon to draw for this frame: its row in WEAPONS and its muzzle, or nil
 local function weapon_aimed(c)
   if not (weapon_arcs and aim_down) then
-    said_weapon, held, aim_still.since, aim_still.yaw = nil, nil, nil, nil
+    said_weapon, held = nil, nil
     weapon_log_at = 0
     return nil
   end
   local kind, u = held_weapon(c)
   if kind and WEAPONS[kind].ub and not underbarrel_on() then kind = nil end     -- (its rifle: no arc)
+  if kind then
+    local seated, vehicle_kind, _, up = in_vehicle()
+    -- Recorded FRV driver hand/root stays 0.46m above feet, versus 0.97-1.15m when a passenger aims.
+    -- Require elevated vehicle geometry to avoid suppressing a prone soldier beside an FRV on the ground.
+    if seated and up and up >= 0.35
+       and (vehicle_kind == 'cc21c7ffd3ebefb9' or vehicle_kind == '2d85bfe3d8717fe5') then
+      local _, _, z = chef.unit_position(u)
+      if z and z - me[3] < 0.7 then
+        kind, held_miss = nil, 'FRV weapon not raised for aiming'
+      end
+    end
+  end
   local fp = kind and first_person(c, u, WEAPONS[kind])
   local said = kind and (WEAPONS[kind][5] .. (fp and ' (first person: not drawn)' or ''))
                or ('none' .. (held_miss and ' (' .. held_miss .. ')' or ''))
@@ -1750,14 +1741,6 @@ local function weapon_aimed(c)
   end
   if not kind or fp then return nil end
   return WEAPONS[kind], muzzle_of(u, WEAPONS[kind]), u, kind
-end
-
--- the camera's turn since the last frame, degrees/s (yaw, pitch): the weapon's aim is learned only while it's still
-local cam_was = nil              -- last frame's camera: { t, yaw, pitch }
-local function camera_turn(c)
-  if not (cam_was and now() > cam_was[1]) then return 0, 0 end
-  local dyaw = (math.atan2(c.fy, c.fx) - cam_was[2] + math.pi) % (2 * math.pi) - math.pi
-  return math.deg(dyaw) / (now() - cam_was[1]), math.deg(camera_pitch(c) - cam_was[3]) / (now() - cam_was[1])
 end
 
 -- ------------------------------------------------------------------ C4's mode by the crosshair
@@ -1807,17 +1790,18 @@ local vehicle_watch = chef.watch and chef.watch(VEHICLES, 0.5)
 
 in_vehicle = function()
   if not (vehicle_watch and me) then return false end
-  local best, bup
+  local best, bup, selected
   for _, it in ipairs(vehicle_watch.items) do
     if chef.unit_alive(it.unit) then
       local x, y, z = chef.unit_position(it.unit)
       if x then
         local across = math.sqrt((x - me[1]) ^ 2 + (y - me[2]) ^ 2)
-        if not best or across < best then best, bup = across, me[3] - z end
+        if not best or across < best then best, bup, selected = across, me[3] - z, it end
       end
     end
   end
-  return best ~= nil and (best < VEHICLE_NEAR or (best < VEHICLE_SEAT and bup >= VEHICLE_UP))
+  return best ~= nil and (best < VEHICLE_NEAR or (best < VEHICLE_SEAT and bup >= VEHICLE_UP)),
+         selected and selected.kind, selected and selected.unit, bup
 end
 
 -- test.8: seat/aim eligibility is not yet exposed by a verified loader API. Collect existing animation variables
@@ -1975,13 +1959,11 @@ function M.update(dt)
   local weapon, muzzle, weapon_unit, weapon_kind, aim
   if not (aiming or c4_aim or h) then weapon, muzzle, weapon_unit, weapon_kind = weapon_aimed(c) end
   if weapon then
-    local turn, nod = camera_turn(c)
-    aim = weapon_aim(c, weapon_kind, weapon_unit, math.sqrt(turn * turn + nod * nod) >= AIMING.STILL_TURN)
+    aim = weapon_aim(c, weapon_kind, weapon_unit)
   end
   weapon_diagnostic.vehicle(c, weapon, muzzle, weapon_unit, weapon_kind)
   weapon_diagnostic.update(c, weapon, muzzle, aim, weapon_unit, weapon_kind)
   local nade = grenade.update(c, not (aiming or c4_aim or h or weapon))
-  cam_was = { now(), math.atan2(c.fy, c.fx), camera_pitch(c) }
   if aiming then
     draw_arc(c, false, release_point(c, ball, false))
   elseif c4_aim then

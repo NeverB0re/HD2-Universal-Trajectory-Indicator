@@ -1,4 +1,4 @@
-# Weapon muzzle and prone work: test.5 through test.8
+# Weapon muzzle and prone work: test.5 through test.9
 
 2026-11-01. Based on local installed Steam build 26251122. The user reports grenade arcs fit well after test.4;
 this milestone changes weapon selection/origin/view classification only. Grenade fitting and saved calibration are unchanged.
@@ -196,3 +196,72 @@ no firing. Note whether shots/line agree and which weapon was used. No moving-ve
 Test.8 already includes test.7; it does not require installing two builds. Vehicle correction remains unresolved.
 All 131 offline Lua 5.1 tests pass, including idle-on-foot, no-fire entry/settled snapshots, bounded logging,
 preserved passenger arcs and idle projectile scanning. No remote push or in-game test.8 accuracy claim.
+
+
+## Test.9: fixed profiles supersede live weapon-angle learning
+
+The user reports gradual convergence during passenger aim and again after dismounting, and requests fixed
+weapon/context values after observations. Code confirms the earlier learned offset was keyed only by weapon
+kind, so vehicle and on-foot observations could overwrite the same correction. Test.9 removes that live weapon
+angle learner and its timers/history entirely. The grenade flight fitter is unchanged; this change concerns
+weapon aiming offsets, not live camera/muzzle/movement/physics updates.
+
+`weapon_profile` now chooses immutable yaw/pitch degrees. The measured GL-21 groups use root height above the
+tracked player's feet: below 0.5m, 0.5-1.0m, and at least 1.0m. These are geometry groups supported by these logs,
+not a verified native stance enum; unusual aim elevations, ramps or animation transitions can cross a boundary.
+Profile selection happens immediately. There is no waiting for alignment with the camera and no saved learned
+weapon offset. Actual weapon heading remains live, preserving aim lag and corner deflections.
+
+| GL-21 geometry group | Yaw offset | Pitch offset (before existing +0.6deg launch lift) | Recorded flights |
+| --- | ---: | ---: | ---: |
+| low root (prone observations) | -1.84deg | 0.75deg | 5 |
+| mid root (crouched observations) | -0.13deg | 0.95deg | 3 |
+| high root (standing observations) | +0.06deg | 1.17deg | 6 |
+
+`tools/fit_weapon_aim.py` reproduces these offline medians from test.6 and test.8 raw flight fixtures. Horizontal
+heading comes directly from observed XY displacement. Vertical pitch is fitted against height versus horizontal
+range using the existing 100m/s, drag and 120Hz gravity model, avoiding unmeasured release/frame timestamp delay.
+The existing launch lift is included when converting fitted pitch into the stored correction. No engine speed,
+drag, gravity, lifetime or movement constants are refitted.
+
+The first two test.8 GL-21 shots differ greatly between sampled root direction and observed projectile direction
+(2.7/4.5deg horizontally, approximately 9.8/11.8deg in the corresponding pitch correction). They are explicitly
+excluded from fixed-profile fitting, not claimed solved. Current records cannot distinguish aim turning/settling
+between input and release from other aim state effects. The fixed profiles fit the other captured geometry;
+accuracy during rapid aim changes remains a separate required check.
+
+Other weapons retain the previous unmeasured fixed default (0deg yaw, 1.5deg pitch). Elevated vehicle geometry
+selects a separate unmeasured vehicle default with those same numbers, never a GL-21 on-foot profile. No vehicle
+projectile was captured in this session: all nine shot samples were spent before boarding. Thus a passenger
+correction must not be invented from these weapon/hand snapshots alone. Geometry classification still uses the
+existing vehicle proximity heuristic plus feet at least 0.35m above the vehicle root. It is not authoritative
+seat membership, and standing on a vehicle/tilted terrain remain limits.
+
+The user confirmed passenger shooting first, then repeated driver right-click tests; death occurred in the front
+passenger seat. Snapshots 9-13 show the fixed driver hand/root height near 0.463m while camera directions change.
+Settled passenger snapshots 2/4/6 show 1.08-1.15m; 14/15 are excluded from normal calibration because of the later
+passenger/death context. `character_state=3`, steering and gunner values occur in both seats, so none is used as
+a driver enum. FRV-family weapon arcs now require the weapon root to rise at least 0.7m above feet when vehicle
+geometry is elevated. This hides the measured driver pose and lowered passenger entry pose, without changing
+C4 eligibility. The gate is a measured pose heuristic, not a universal driver-seat API; tilted/other seats need
+coverage. Only the known FRV / heavy-FRV kinds are gated (local resource list names confirm these hashes).
+Ground-level prone soldiers near the vehicle are excluded from this gate.
+
+Recorder budgets now allow three shots per weapon/profile, with a global cap of 16. One weapon can use at most
+nine shots across its three on-foot groups, leaving capacity for its passenger profile. Trying many weapons can
+still exhaust the global cap, so the focused check should use one weapon. Logs include the selected fixed profile. The 0.35s bounded watch window
+is retained only as passive development evidence and never feeds a displayed correction. No new download,
+continuous world scan or persistent weapon calibration is introduced.
+
+Verification: 138 Lua 5.1 tests pass. Captured stable GL-21 inputs are checked from the first frame against actual
+horizontal flight and early-flight height (within 0.25m vertically for all 14 selected recorded flights). Tests
+also cover unchanged lines with time/FPS, immediate geometry-profile switches, immediate return to the identical
+on-foot path after dismount, large corner deflection, recorded driver/passenger poses, prone beside a grounded
+FRV, context/global recording budgets, and existing grenade/C4/stratagem behavior. These are replay/fake-loader
+checks; test.9 has not been tested in game, and neither all-weapon accuracy nor moving-vehicle accuracy is proven.
+
+Next minimal check: install only test.9. Stopped FRV driver right-click should hide the weapon arc; passenger
+GL-52/CB-9/GL-21 may then fire two single shots after raising the weapon. Use the same weapon after dismounting
+and compare immediately versus several seconds later while keeping the actual aim/weapon pose unchanged.
+There is no calibration wait requirement. State which weapon was used and whether the line/impact shifts;
+passenger accuracy is still pending the first captured passenger rounds. No remote push.

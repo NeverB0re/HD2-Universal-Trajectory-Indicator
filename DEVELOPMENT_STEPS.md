@@ -139,3 +139,15 @@ verified seat/firing eligibility reader was found in inspected local/public sour
 add bounded passive vehicle aim geometry/known animation-variable snapshots using existing guarded APIs before
 choosing a driver gate. Test.8 includes test.7's unverified-in-game prone correction. All 131 tests pass; vehicle
 eligibility and passenger accuracy are unresolved. See WEAPON_MUZZLES.md for the minimal stopped-car check.
+
+
+## Step 4 fixed-profile correction: 1.1.1-test.9
+
+User requests fixed weapon/context corrections instead of aiming-time convergence; driver remains falsely drawn.
+Remove the live weapon-angle learner and shared per-kind history. GL-21 gets offline-fitted immutable height-group
+profiles; other weapons/vehicle context use explicitly unmeasured fixed defaults. Preserve live muzzle/heading,
+movement and ballistic physics. Confirmed passenger-then-driver order links driver snapshots 9-13 to low weapon
+height; add a bounded elevated-FRV raised-weapon eligibility check without suppressing prone ground soldiers.
+No verified seat enum is inferred from character_state. Reserve shot recording budget per weapon/profile so the
+next passenger flight can actually be observed. All 138 tests pass; test.9 runtime and passenger ballistics remain
+pending, along with unusual geometry/rapid turn coverage. See WEAPON_MUZZLES.md for data/limits.
