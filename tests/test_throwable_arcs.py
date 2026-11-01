@@ -2144,6 +2144,48 @@ class ArcTest(unittest.TestCase):
         self.assertEqual(self.logs().count(' shot t='), 4)
         self.assertIn('profile=vehicle/FRV-local fixed=true', self.logs())
 
+    def test_unprofiled_weapon_standing_shots_do_not_exhaust_prone_evidence(self):
+        gun = self.weapon_in_hand('f49227a0630a3f7f')
+        self.fake['mouse']['right'] = True
+        self.frames(2)
+        for height in (1.2, .3):
+            gun.z = height
+            for _ in range(4):
+                self.fake['mouse']['left'] = True
+                self.frames(25)
+                self.fake['mouse']['left'] = False
+                self.frames(1)
+        self.assertEqual(self.logs().count(' shot t='), 6)
+        self.assertEqual(self.logs().count('evidence-stance=standing;'), 3)
+        self.assertEqual(self.logs().count('evidence-stance=prone;'), 3)
+
+    def test_pre_shot_history_is_bounded_and_does_not_scan_projectiles(self):
+        self.weapon_in_hand(self.GL)
+        self.fake['mouse']['right'] = True
+        self.frames(120)
+        self.assertNotIn('pre-shot', self.logs())
+        self.assertEqual(self.direction_watch().lists, 0)
+        self.fake['mouse']['left'] = True
+        self.frames(1)
+        history = [s for s in self.logs().splitlines() if ' pre-shot ' in s]
+        self.assertEqual(len(history), 8)
+        for s in history:
+            dt = float(s.split('dt=')[1].split()[0])
+            self.assertGreaterEqual(dt, -.25)
+            self.assertLess(dt, 0)
+            self.assertIn('camera-forward=', s)
+
+    def test_pre_shot_history_does_not_mix_equipped_weapons(self):
+        gun = self.weapon_in_hand(self.GL)
+        self.fake['mouse']['right'] = True
+        self.frames(10)
+        gun.dead = True
+        self.weapon_in_hand('f49227a0630a3f7f')
+        self.fake['mouse']['left'] = True
+        self.frames(1)
+        self.assertIn(' shot t=', self.logs())
+        self.assertNotIn(' pre-shot ', self.logs())
+
     def test_direction_recording_is_globally_bounded_across_profiles(self):
         gun = self.weapon_in_hand(self.GL)
         self.fake['mouse']['right'] = True

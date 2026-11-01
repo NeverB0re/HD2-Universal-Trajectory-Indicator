@@ -93,3 +93,73 @@ Build-time development markers remove BOTH weapon and vehicle collectors plus th
 non-test versions. The stable-source compile/runtime test verifies no weapon_diagnostic, candidate-summary,
 GR-8 discovery or vehicle-aim recorder remains, while weapon arcs work. No native external collector is included.
 A live GR-8 flight is still pending; do not represent restored capability in a fake-loader test as captured data.
+
+## Actual test.14 capture and stance evidence budget (test.15)
+
+The next user run DID capture two GR-8 candidate series of kind `4fd8795ed60f5579`:
+shot 3 standing (nine positions), shot 4 prone (four positions). Both first appear within
+0.025/0.034m of the click-frame muzzle and move at approximately the nominal 250m/s.
+The installed resource listing contains this unit hash but gives no resolved resource name.
+This is strong shot correlation, not an engine-provided shooter-id association. Raw candidate,
+body and synchronized records are preserved in `tests/fixtures/weapon_direction_test14.json`.
+
+`tools/analyze_native_flights.py` fits height against horizontal distance with each weapon's
+existing nominal speed/gravity/drag held fixed. It avoids treating time since input as time
+since emission. Its pitch describes the first observed position, not a separately verified
+launch instant. With these assumptions, GR-8 vertical residual RMS is below 0.0001m over
+the recorded segments. This does not prove the model at every range or identify the engine's
+aim algorithm. No physics or angle parameter is fitted into the game.
+
+For shot 4, root yaw error is -0.01868deg while the current corrected display error is
+-0.65217deg. Thus the roll correction makes this actual prone shot worse. Standing shot 3
+display yaw/pitch error is approximately -0.20843/+0.09904deg; prone shot 4 approximately
+-0.65217/+0.24879deg. Earlier GL-21 prone captures did benefit from the local correction.
+One prone GR-8 flight cannot determine a universal replacement; do not turn these two shots
+into a new all-weapon constant or claim the old camera-derived GR-8 profile is validated.
+
+The same run contains three CB-9 standing clicks. Its prediction profile is shared across
+stances, so the three-per-profile recorder budget prevented any further prone CB-9 clicks
+from being recorded. Test.15 separates diagnostic budgets by geometric stance as well as
+weapon/profile. This classification is not an engine stance flag and does not change aim.
+The global sixteen-shot cap, three-per-context cap, 0.35s tracking window, GR-8 discovery
+bounds and release-time stripping remain. A maximum eight-pose/0.25s pre-click history,
+cleared on unit/world changes, distinguishes pre-emission pose from post-click recoil or
+animation changes. It never scans the world or learns an aim value during idle aiming.
+
+Test.15 intentionally retains test.14 trajectory math. Its next necessary evidence is
+stationary prone GR-8 and CB-9 shots aimed forward, left and right while the lower body stays
+fixed, three per weapon, with sufficient clear flight distance. Existing standing controls
+are retained; no standing repeat, vehicle experiment or unowned weapon is needed. Compare
+the native flight against pre-click/click/first-appearance poses before replacing a model.
+155 Lua 5.1 tests pass, including the separate unknown-profile stance budgets and bounded,
+unmixed history; these checks are not in-game accuracy validation. No remote push.
+
+## User steering: native dynamic reticle before more stance experiments
+
+Investigate the native circular aiming reticle's live direction/target inputs before asking
+for the test.15 stance matrix. No new all-weapon correction is established or applied.
+
+Primary public leads checked 2026-11-01:
+
+- HD2 HUD+ author DC post, https://gall.dcinside.com/mgallery/board/view/?id=helldiversseries&no=874903
+  describes native-coordinate dynamic AMR reticles in 0.1.7/0.1.8. This is a stronger
+  coordinate-acquisition lead than merely enabling a weapon's hidden native reticle.
+- Author's changelog and current status, https://www.nexusmods.com/helldivers2/mods/15298?tab=description
+  confirms earlier positional integration; also reports suspension after 7.2.0 because
+  real-time data access no longer works through the former architecture. A historical
+  method is not proof of a compatible current-build accessor. Package not downloaded yet.
+- HD2Runtime https://raw.githubusercontent.com/SkyeShade/HD2Runtime/master/docs/weapon-reticles.md
+  describes a crosshair-style enum toggle in WeaponDataComponentData, not a live reticle
+  coordinate or shot-direction accessor. Do not confuse visibility controls with aim data.
+- The 3rd Person Sniper Reticles author describes native-reticle activation:
+  https://www.nexusmods.com/helldivers2/mods/17918?tab=description
+  No package inspection or direction-access claim has been made.
+- Diver HUD post https://gall.dcinside.com/mgallery/board/view/?id=helldiversseries&no=904895
+  is another candidate. Download permission was requested before finding the more specific
+  HUD+ post. No download or installation has occurred.
+
+Prefer a supported read of the engine's world-space aim direction/target. If only a 2D
+screen position is available, camera unprojection gives a ray from the CAMERA; without
+depth, it cannot uniquely determine a ray from a different projectile origin. Do not
+silently choose a fixed world distance. First inspect what native data the reference
+actually reads and how it projects it; retain existing trajectories until validated.

@@ -9,7 +9,7 @@
 -- Transmog's catalog (Nexus 16633).
 local chef = ...
 local M = {}
-local VERSION = '1.1.1-test.14'
+local VERSION = '1.1.1-test.15'
 
 if chef.has and chef.has('own_log') then chef.own_log('throwable_arcs') end
 local function log(fmt, ...) chef.log(fmt, ...) end
@@ -1105,6 +1105,7 @@ local weapon_diagnostic = (function()
   if watch then watch.pause() end
   local previous, count, sample, budgets = false, 0, nil, {}
   local discovery, discovery_arms = nil, 0
+  local history, history_unit, history_world = {}, nil, nil
   local function vector(label, x, y, z)
     if type(x) == 'number' and type(y) == 'number' and type(z) == 'number' then
       log('weapon direction %d %s %.6f %.6f %.6f', count, label, x, y, z)
@@ -1168,6 +1169,8 @@ local weapon_diagnostic = (function()
   return {
     update = function(c, w, muzzle, aim, u, kind, aim_mode)
       local down, t = chef.mouse_down('left') == true, now()
+      if history_unit ~= u or history_world ~= chef.world_id() then history = {} end
+      history_unit, history_world = u, chef.world_id()
       -- Restore the old test.3-6 new-unit path for GR-8, without assuming a projectile hash.
       -- One baseline per aiming/equipped unit (six arms/load), then at most six scans per shot; test builds only.
       if kind ~= '9f80d67a12a7e40f' then discovery = nil
@@ -1181,7 +1184,16 @@ local weapon_diagnostic = (function()
         end
       end
       local profile = down and not previous and w and count < 16 and weapon_profile(kind, u)
-      local key = profile and (kind .. '/' .. profile[3])
+      -- The prediction profile is NOT a stance label. Unprofiled weapons (e.g. CB-9) share AIM_OFF
+      -- standing and prone; previously three standing clicks silently exhausted their prone evidence budget.
+      local stance
+      if profile then
+        local torso = prone_torso()
+        local height = select(3, chef.unit_position(u)) - (feet_z or c.z)
+        stance = torso == true and 'prone' or (height < 0.5 and torso == nil and 'prone'
+                  or (height < 1 and 'crouch' or 'standing'))
+      end
+      local key = profile and (kind .. '/' .. profile[3] .. '/' .. stance)
       if down and not previous and w and muzzle and count < 16 and (budgets[key] or 0) < 3 then
         if sample then finish_sample() end
         budgets[key] = (budgets[key] or 0) + 1
@@ -1201,6 +1213,16 @@ local weapon_diagnostic = (function()
         vector('predicted-velocity', vx, vy, vz)
         vector('player-velocity', mx, my, 0)
         body_snapshot(t)
+        log('weapon direction %d evidence-stance=%s; geometric classification only', count, stance)
+        -- A click and the first visible round are different engine frames. Retain recent pre-click weapon
+        -- poses to test latency/recoil, never fit a correction from a later animated/recoiling weapon pose.
+        for _, h in ipairs(history) do
+          if h.t < t and t-h.t <= 0.25 then
+            log('weapon direction %d pre-shot dt=%.6f muzzle=%.6f %.6f %.6f root=%.6f %.6f %.6f'
+                .. ' forward=%.6f %.6f %.6f camera=%.6f %.6f %.6f camera-forward=%.6f %.6f %.6f',
+                count,h.t-t,h[1],h[2],h[3],h[4],h[5],h[6],h[7],h[8],h[9],h[10],h[11],h[12],h[13],h[14],h[15])
+          end
+        end
         local off = profile
         log('weapon direction %d offset-deg %.6f %.6f profile=%s fixed=true direction-mode=%s', count, off[1], off[2], off[3], aim_mode or 'unavailable')
         local seen = setmetatable({}, { __mode = 'k' })
@@ -1214,6 +1236,14 @@ local weapon_diagnostic = (function()
         else sample = nil; if watch then watch.pause() end end
       end
       previous = down
+      if w and muzzle and count < 16 then
+        local x,y,z = chef.unit_position(u)
+        local fx,fy,fz = chef.unit_rotation(u)
+        if x and type(fx)=='number' then
+          history[#history+1] = {muzzle[1],muzzle[2],muzzle[3],x,y,z,fx,fy,fz,c.x,c.y,c.z,c.fx,c.fy,c.fz,t=t}
+          if #history > 8 then table.remove(history, 1) end
+        end
+      else history = {} end
       if not sample then return end
       if t-sample.at > 0.35 or sample.world ~= chef.world_id() then finish_sample(); return end
       if sample.discover and t-sample.at <= 0.14 and sample.scans < 6 and t >= sample.next_scan then
