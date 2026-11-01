@@ -60,3 +60,29 @@ weapon. Retain weapon-specific projectile physics. Preserve current source behav
 handles the confirmed muzzle/prone work and relevant aim-lag/vehicle cases. Use the existing recorded flights first;
 ask for only representative live checks needed to resolve remaining cases. No runtime feature removal, new test
 build or remote push was performed for this research.
+
+
+## Implementation boundary discovered after approving the common method
+
+The user's acceptance explicitly requires any stance, target location and distance, without learning on equip.
+The inspected Chef Shared Loader documentation at commit `400cc03aa558f30b5f84c6c0e7f840b4fb8e92ba` states
+that its Lua API has no world raycast; `ray_box` tests a supplied box or a unit's own box only:
+https://github.com/Th3chef/Chef-Shared-Loader/blob/400cc03aa558f30b5f84c6c0e7f840b4fb8e92ba/README.md
+https://github.com/Th3chef/Chef-Shared-Loader/blob/400cc03aa558f30b5f84c6c0e7f840b4fb8e92ba/CHANGELOG.md
+This does not prove that no engine/native alternative exists. It does mean a fixed-distance camera-ray target
+cannot be represented as the actual target intersection, and unit boxes alone miss terrain/walls/rocks.
+
+The direction operation itself is universal and stateless: normalize(actual target minus animated muzzle).
+To use it faithfully at any distance requires a verified actual aim target or equivalent shot-direction provider.
+The user also requires real weapon aim lag to remain correct: screen center alone is not proof of the current
+barrel's fire direction while turning or next to an obstruction. No production direction replacement was applied.
+
+`tools/compare_aim_models.py --distance 100` now reproduces the preceding saved-flight comparison without
+running the game or downloading a package. It separates the immutable convergence-distance assumption from the
+live muzzle/camera inputs, and contains no calibration state. It supports other positive distances for analysis;
+choosing a best distance from these samples does not prove all-distance accuracy. The full goal remains open.
+
+A 100m convergence test build would be a bounded approximation experiment and requires the user's acceptance of
+that narrower scope under their rule about indirect approaches. Otherwise continue investigating an actual
+engine aim-target/direction path before replacing confirmed production behavior. No new in-game experiment is
+requested to establish the documented API limitation.
