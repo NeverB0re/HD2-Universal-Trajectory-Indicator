@@ -9,7 +9,7 @@
 -- Transmog's catalog (Nexus 16633).
 local chef = ...
 local M = {}
-local VERSION = '1.1.1-test.6'
+local VERSION = '1.1.1-test.7'
 
 if chef.has and chef.has('own_log') then chef.own_log('throwable_arcs') end
 local function log(fmt, ...) chef.log(fmt, ...) end
@@ -797,14 +797,18 @@ local MUZZLE, SEG, SEG_FAR, MOST_POINTS = 0.45, 0.66, 0.015, 800   -- MUZZLE is 
 -- catching up after a turn, and a weapon turned by the game toward a near corner under the crosshair (the Breacher's
 -- barrel 5.3 degrees left, its round 5.1), were taken for its offset, and the arc went back to the camera too soon. Now
 -- learned only once the camera and the weapon have both been still for STILL_FOR s, AIM_LEARN a frame, and never from a
--- difference more than AIM_ODD degrees off what is known; it starts from AIM_OFF (weapons point 1.3-2.4 degrees above
+-- pitch difference more than AIM_ODD degrees off what is known; it starts from AIM_OFF (weapons point 1.3-2.4 degrees above
 -- their round's way, about level across, in the probe and test.3).
+-- test.7: recorded prone GL-21 rounds follow camera yaw within 0.27 degrees while the root is 1.72-2.28 degrees off.
+-- The old 1-degree joint yaw/pitch gate froze the standing correction. Learn yaw independently inside an absolute
+-- 3-degree root/camera envelope (measured offset plus margin); keep the 5.3-degree near-corner case excluded.
+-- This is a bounded model, not proof that every larger root/camera difference is a stance offset.
 -- My velocity: all of it along the aim; SIDE_CARRY of it across (test.3: walking 2.2 m/s sideways, the GL's round went
 -- 0.6 of it with me, test.2's Breacher 0.3; the Punisher Plasma's clearly went with me; test.3 added none).
 -- Once found, the weapon in hand is kept while aiming lasts and it points within HELD_KEEP of the camera (test.2's arc
 -- went away mid-turn, the weapon lagging past HELD_ALONG).
 -- (in one table: the file is near Lua 5.1's 200 locals)
-local AIMING = { STILL_TURN = 8, STILL_FOR = 0.5, AIM_LEARN = 0.05, AIM_ODD = 1.0, HELD_KEEP = 0.8 }
+local AIMING = { STILL_TURN = 8, STILL_FOR = 0.5, AIM_LEARN = 0.05, AIM_ODD = 1.0, YAW_LIMIT = 3.0, HELD_KEEP = 0.8 }
 local AIM_OFF, SIDE_CARRY = { 0, 1.5 }, 0.5
 local aim_off = {}               -- weapon kind -> { yaw, pitch } (degrees) the weapon points off the round's way
 local aim_still = { since = nil, yaw = nil, pitch = nil, t = 0 }   -- since when the camera and the weapon are still
@@ -983,6 +987,11 @@ local function weapon_aim(c, kind, u, turning)
   local wyaw, wpitch = math.deg(math.atan2(fy, fx)), math.deg(math.atan2(fz, math.sqrt(fx * fx + fy * fy)))
   local cyaw, cpitch = math.deg(math.atan2(c.fy, c.fx)), math.deg(camera_pitch(c))
   local st, t = aim_still, now()
+  local dt = t - st.t
+  local world = chef.world_id()
+  if st.unit ~= u or st.world ~= world or dt > 0.25 or dt <= 0 then
+    st.since, st.yaw, st.unit, st.world = nil, nil, u, world
+  end
   local swing = 0
   if st.yaw and t > st.t then
     swing = math.sqrt(((wyaw - st.yaw + 180) % 360 - 180) ^ 2 + (wpitch - st.pitch) ^ 2) / (t - st.t)
@@ -996,8 +1005,13 @@ local function weapon_aim(c, kind, u, turning)
   end
   if st.since and t - st.since >= AIMING.STILL_FOR then
     local dyaw, dpitch = (wyaw - cyaw + 180) % 360 - 180, wpitch - cpitch
-    if math.abs(dyaw - off[1]) < AIMING.AIM_ODD and math.abs(dpitch - off[2]) < AIMING.AIM_ODD then
-      off[1], off[2] = off[1] + (dyaw - off[1]) * AIMING.AIM_LEARN, off[2] + (dpitch - off[2]) * AIMING.AIM_LEARN
+    -- Same response as 0.05/frame at 60Hz, independent of the actual update rate.
+    local alpha = 1 - (1 - AIMING.AIM_LEARN) ^ (math.max(0, math.min(dt, 0.25)) * 60)
+    if math.abs(dyaw - AIM_OFF[1]) <= AIMING.YAW_LIMIT then
+      off[1] = off[1] + ((dyaw - off[1] + 180) % 360 - 180) * alpha
+    end
+    if math.abs(dpitch - off[2]) < AIMING.AIM_ODD then
+      off[2] = off[2] + (dpitch - off[2]) * alpha
     end
   end
   return { math.rad(wyaw - off[1]), math.rad(wpitch - off[2]) }

@@ -1,4 +1,4 @@
-# Weapon muzzle and prone work: test.5 / test.6 diagnostics
+# Weapon muzzle and prone work: test.5 through test.7
 
 2026-11-01. Based on local installed Steam build 26251122. The user reports grenade arcs fit well after test.4;
 this milestone changes weapon selection/origin/view classification only. Grenade fitting and saved calibration are unchanged.
@@ -109,3 +109,56 @@ must not be represented as projectile accuracy evidence.
 
 All 124 Lua 5.1 tests pass, including bounded diagnostic activation, session budget, world-change cancellation,
 recording distinct root/node rotations, and unchanged drawn arcs. No test.6 real-game run or remote push.
+
+
+## Test.7: bounded yaw relearning after stance changes
+
+The user ran test.6 and reported standing/crouched alignment but prone disagreement. The 12:27 session contains
+nine sampled shots: GP-20 shots 1-2, GL-21 shots 3-9. The later 12:36 restart has no samples; do not select the
+last version banner blindly when analyzing the log. Original measured vectors/positions are preserved in
+`tests/fixtures/weapon_direction_test6.json`. The root height groups agree with the user's stance sequence, but
+runtime code does not classify stance from this height.
+
+All seven GL-21 flights have a single candidate originating within 0.6-1.6cm of the sampled muzzle, followed by
+continuous outward flight. Root and muzzle forward vectors agree. Thus switching to muzzle rotation would not
+correct this measured yaw error. Horizontal flight direction is measured from first-to-last observed XY positions;
+it does not depend on fitting gravity, speed, drag or release time.
+
+| GL-21 shots | Height group | Actual minus camera yaw | Original predicted minus actual yaw |
+| --- | --- | --- | --- |
+| 3, 4, 9 | standing | -0.109, -0.225, +0.044 deg | +0.101, +0.221, -0.067 deg |
+| 5, 6 | crouched | +0.031, -0.321 deg | -0.323, +0.150 deg |
+| 7, 8 | prone | -0.079, -0.262 deg | -1.301, -1.673 deg |
+
+Prone root-minus-camera yaw is -1.722 / -2.277 degrees. The cached yaw offset remained at -0.342 degrees for both
+shots: the previous one-degree joint yaw/pitch acceptance test rejected the new difference. This also froze pitch
+learning when yaw was out of range. GP-20 shot 1 shows the reciprocal problem: its outlying pitch difference
+prevented yaw learning. GP-20 shot 2 was moving (about 2.1m/s); do not treat it as stationary stance evidence.
+
+Changes in test.7:
+
+- Learn stationary yaw independently of the existing pitch gate, inside an absolute +/-3 degree root/camera yaw
+  envelope. This accommodates the observed 2.28 degree difference plus margin. It does not label every barrel
+  deflection as a stance offset. Larger differences retain the previous correction, preserving the recorded
+  near-corner 5.3 degree case; unlike a gate relative to the last learned value, the envelope cannot drift there.
+- Retain root-following while turning and the existing 0.5 second camera/weapon settling requirement. Do not
+  force the arc onto the camera during aim lag. Changing pose needs settling/relearning, about two seconds in
+  the verification below. The boundary remains heuristic; unobserved weapons/poses can exceed it.
+- Keep pitch's one-degree acceptance rule and all launch lift, speed, movement, drag, lifetime and origin math.
+  Separate yaw/pitch acceptance allows one valid component to learn while the other is rejected. No new vertical
+  ballistic fit is claimed from these horizontal comparisons.
+- Scale smoothing with elapsed time (same response as 0.05/frame at 60Hz) and reset the stillness timer when the
+  unit/world changes or updates are interrupted. This prevents performance-dependent settling or carrying a
+  previous weapon's stillness timer into a newly selected unit.
+- Retain the bounded passive diagnostic recorder for the focused test. It does not auto-calibrate to candidates.
+
+Verification: all 128 Lua 5.1 tests pass. Replaying shots 3-9 in order, holding each captured aim for two seconds,
+produces horizontal errors +0.066, +0.182, -0.073, +0.279, +0.040, +0.226, -0.061 degrees. Restoring only the old
+`weapon_aim` function in memory makes the two prone regression cases fail. Additional checks cover independent
+yaw learning, 30/60/120Hz settling, the large corner case after a prone correction, and existing dynamic aim lag.
+This replay establishes the stationary horizontal correction on these captured inputs, not actual in-game
+accuracy after installation, vertical accuracy or all-weapon coverage.
+
+Next live check: GL-21 first, stationary third person, wait about two seconds after each stance change, then two
+single shots each standing/crouched/prone. Also note whether the arc retains the correct origin while changing
+stance. No grenade retest or new weapon unlock is required. Test.7 is a local test build; no remote push.

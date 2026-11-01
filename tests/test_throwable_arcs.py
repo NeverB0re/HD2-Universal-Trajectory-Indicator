@@ -1665,6 +1665,86 @@ class ArcTest(unittest.TestCase):
             names['sight'] = 12
         gun.nodes, gun.named_nodes = self.lua.table_from(positions), self.lua.table_from(names)
 
+    def direction_flights(self):
+        with open(os.path.join(HERE, 'fixtures', 'weapon_direction_test6.json'), encoding='utf-8') as f:
+            return json.load(f)['shots']
+
+    def apply_direction_flight(self, gun, row):
+        v = row['vectors']
+        c = v['camera-position']
+        for key, value in zip(('x', 'y', 'z'), c):
+            self.fake.cam[key] = value
+        for key, value in zip(('fx', 'fy', 'fz'), v['camera-forward']):
+            self.fake.cam[key] = value
+        for key, value in zip(('x', 'y', 'z'), v['root-position']):
+            gun[key] = value
+        gun.f = self.lua.table_from(v['root-forward'])
+        self.fake.me.x, self.fake.me.y = gun.x, gun.y
+        height = float(row['header'].split('root-height=')[1])
+        self.fake.me.z = gun.z - height
+        self.weapon_nodes(gun, v['muzzle-position'])
+
+    def drawn_yaw(self):
+        line = self.lines()[0]
+        return math.degrees(math.atan2(line[4] - line[1], line[3] - line[0]))
+
+    @staticmethod
+    def yaw_error(a, b):
+        return (a - b + 180) % 360 - 180
+
+    def test_recorded_standing_crouched_prone_rounds_after_aim_settles(self):
+        gun = self.weapon_in_hand(self.GL)
+        self.fake['mouse']['right'] = True
+        flights = self.direction_flights()
+        # Actual sequence including returning to standing. No fabricated stance labels in runtime code.
+        for n in ('3', '4', '5', '6', '7', '8', '9'):
+            with self.subTest(shot=n):
+                row = flights[n]
+                self.apply_direction_flight(gun, row)
+                self.frames(120)
+                a, b = row['samples'][0], row['samples'][-1]
+                actual = math.degrees(math.atan2(b[3] - a[3], b[2] - a[2]))
+                self.assertLess(abs(self.yaw_error(self.drawn_yaw(), actual)), .4)
+                self.assertLess(math.dist(a[2:], row['vectors']['muzzle-position']), .02)
+
+    def test_large_corner_deflection_is_not_learned_even_after_prone_offset(self):
+        gun = self.weapon_in_hand(self.GL)
+        self.fake['mouse']['right'] = True
+        def point(degrees):
+            a = math.radians(degrees)
+            gun.f = self.lua.table_from((math.cos(a), math.sin(a), math.sin(math.radians(1.5))))
+        point(-2.3)
+        self.frames(150)
+        self.assertAlmostEqual(self.drawn_yaw(), 0, delta=.05)
+        point(-5.3)
+        self.frames(180)
+        self.assertAlmostEqual(self.drawn_yaw(), -3, delta=.05,
+                               msg='the existing 2.3 degree offset is retained, not learned toward the corner')
+
+    def test_yaw_learning_is_independent_of_outlying_pitch(self):
+        # GP-20 shot 1: the pitch gate previously also prevented an otherwise valid yaw correction.
+        row = self.direction_flights()['1']
+        gun = self.weapon_in_hand('9eb160830321bfd6')
+        self.apply_direction_flight(gun, row)
+        self.fake['mouse']['right'] = True
+        self.frames(120)
+        cam = row['vectors']['camera-forward']
+        self.assertAlmostEqual(self.drawn_yaw(), math.degrees(math.atan2(cam[1], cam[0])), delta=.05)
+
+    def test_prone_yaw_settles_at_different_frame_rates(self):
+        row = self.direction_flights()['8']
+        results = []
+        for hz in (30, 60, 120):
+            self.setUp()
+            gun = self.weapon_in_hand(self.GL)
+            self.apply_direction_flight(gun, row)
+            self.fake['mouse']['right'] = True
+            self.frames(round(2 * hz), dt=1 / hz)
+            cam = row['vectors']['camera-forward']
+            results.append(self.yaw_error(self.drawn_yaw(), math.degrees(math.atan2(cam[1], cam[0]))))
+        self.assertLess(max(map(abs, results)), .07)
+        self.assertLess(max(results) - min(results), .005)
+
     def direction_watch(self):
         return next(w for w in self.fake.watches.values() if w.kinds['a6cd8a90185b6567'])
 
