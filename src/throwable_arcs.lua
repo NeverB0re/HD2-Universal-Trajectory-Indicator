@@ -9,7 +9,7 @@
 -- Transmog's catalog (Nexus 16633).
 local chef = ...
 local M = {}
-local VERSION = '1.1.1-test.15'
+local VERSION = '1.1.1-test.c1'
 
 if chef.has and chef.has('own_log') then chef.own_log('throwable_arcs') end
 local function log(fmt, ...) chef.log(fmt, ...) end
@@ -993,7 +993,7 @@ local function launch(c, w, mx, my, aim, from)
   local px, py, pz = c.x + c.fx * f[1] + hy * f[2] + ux * f[3], c.y + c.fy * f[1] - hx * f[2] + uy * f[3],
                      c.z + c.fz * f[1] + uz * f[3]
   if from then px, py, pz = from[1], from[2], from[3] end
-  local pitch = (aim and aim[2] or camera_pitch(c)) + WEAPON_LIFT
+  local pitch = aim and aim[2] or camera_pitch(c) + WEAPON_LIFT
   if aim then hx, hy = math.cos(aim[1]), math.sin(aim[1]) end
   local along, across = mx * hx + my * hy, (mx * hy - my * hx) * SIDE_CARRY
   local s = w[1] * math.cos(pitch) + along
@@ -1054,41 +1054,47 @@ local function weapon_profile(kind, u)
   return AIM_OFF
 end
 
-local function weapon_aim(c, kind, u, muzzle)
-  local fx, fy, fz = chef.unit_rotation(u)
-  if type(fx) ~= 'number' then return nil end
-  local off, prone, frv_frame = weapon_profile(kind, u)
-  local profile = AIM_PROFILES[kind]
-  local frame = frv_frame or (profile and profile.frame)
-  if (prone or frv_frame) and frame and muzzle then
-    local x, y, z = chef.unit_position(u)
-    local fl = math.sqrt(fx * fx + fy * fy + fz * fz)
-    if x and fl > 0.9 and fl < 1.1 then
-      local ax, ay, az = fx / fl, fy / fl, fz / fl
-      local dx, dy, dz = muzzle[1] - x, muzzle[2] - y, muzzle[3] - z
-      local along = dx * ax + dy * ay + dz * az
-      local px, py, pz = dx - along * ax, dy - along * ay, dz - along * az
-      local pl = math.sqrt(px * px + py * py + pz * pz)
-      -- Rigid locator check: never interpret a legacy offset/changed asset/recoil deformation as weapon roll.
-      if pl > 0.005 and math.abs(along - frame[2]) < 0.03
-         and math.abs(pl - math.sqrt(frame[1] ^ 2 + frame[3] ^ 2)) < 0.015 then
-        -- P = bindX * R + bindZ * U, F cross P = bindZ * R - bindX * U.
-        local qx, qy, qz = ay * pz - az * py, az * px - ax * pz, ax * py - ay * px
-        local ux, uy, uz = frame[3] * px - frame[1] * qx, frame[3] * py - frame[1] * qy, frame[3] * pz - frame[1] * qz
-        local ul = math.sqrt(ux * ux + uy * uy + uz * uz)
-        if ul > 1e-6 then
-          ux, uy, uz = ux / ul, uy / ul, uz / ul
-          local rx, ry, rz = ay * uz - az * uy, az * ux - ax * uz, ax * uy - ay * ux
-          local tx = ax * frame.f + rx * frame.r + ux * frame.u
-          local ty = ay * frame.f + ry * frame.r + uy * frame.u
-          local tz = az * frame.f + rz * frame.r + uz * frame.u
-          return { math.atan2(ty, tx), math.atan2(tz, math.sqrt(tx * tx + ty * ty)) }, frv_frame and 'FRV-local' or 'weapon-local'
-        end
+-- While the camera turns, the game's aim lags it (its small aim circle) and the barrel with it. Lag = the barrel off the
+-- camera now, less how far off it sat when last settled. A held camera gives none however the barrel moves: rounds
+-- followed the camera with the barrel 12 degrees off, still rising.
+AIMING.lag = (function()
+  local FROM, FULL, RISE, FALL, SETTLE = math.rad(8), math.rad(40), 0.05, 0.2, 0.15
+  local unit, at, cy, cp, base_y, base_p, weight
+  local function wrap(a) return (a + math.pi) % (2 * math.pi) - math.pi end
+  return function(c, u)
+    local fx, fy, fz = chef.unit_rotation(u)
+    if type(fx) ~= 'number' then return 0, 0 end
+    local t, yaw, pitch = now(), math.atan2(c.fy, c.fx), camera_pitch(c)
+    local off_y = wrap(math.atan2(fy, fx) - yaw)
+    local off_p = math.atan2(fz, math.sqrt(fx * fx + fy * fy)) - pitch
+    local dt = at and t - at or 0
+    if unit ~= u or dt > 0.25 then
+      unit, base_y, base_p, weight = u, off_y, off_p, 0
+    elseif dt > 0 then
+      local speed = math.sqrt((wrap(yaw - cy) * math.cos(pitch)) ^ 2 + (pitch - cp) ^ 2) / dt
+      local want = math.max(0, math.min(1, (speed - FROM) / (FULL - FROM)))
+      weight = weight + (want - weight) * (1 - math.exp(-dt / (want > weight and RISE or FALL)))
+      if speed < FROM then
+        local k = 1 - math.exp(-dt / SETTLE)
+        base_y, base_p = base_y + wrap(off_y - base_y) * k, base_p + (off_p - base_p) * k
       end
     end
+    at, cy, cp = t, yaw, pitch
+    return weight * wrap(off_y - base_y), weight * (off_p - base_p)
   end
-  return { math.atan2(fy, fx) - math.rad(off[1]),
-           math.atan2(fz, math.sqrt(fx * fx + fy * fy)) - math.rad(off[2]) }, 'world-offset'
+end)()
+
+-- The round leaves the muzzle for the point under the crosshair, whatever the barrel does. 47 tracked rounds (standing,
+-- crouched, prone, twisted, seated; GL-21, GR-8, CB-9, P-34) fit that within 0.16 degrees on average given the point's
+-- distance; the barrel is off by 1.9 (2.0 lying prone, with its pose, not with the shot). That distance can't be read
+-- yet, so AIMING.TARGET stands in (0.40 degrees lying prone, 1.19 for the fixed corrections it replaces).
+AIMING.TARGET = 100
+local function weapon_aim(c, kind, u, muzzle)
+  if not muzzle then return nil, 'camera' end
+  local d = AIMING.TARGET
+  local x, y, z = c.x + c.fx * d - muzzle[1], c.y + c.fy * d - muzzle[2], c.z + c.fz * d - muzzle[3]
+  local lag_y, lag_p = AIMING.lag(c, u)
+  return { math.atan2(y, x) + lag_y, math.atan2(z, math.sqrt(x * x + y * y)) + lag_p }, 'crosshair'
 end
 
 -- DEVELOPMENT_WEAPON_TRACE_BEGIN
@@ -1106,6 +1112,149 @@ local weapon_diagnostic = (function()
   local previous, count, sample, budgets = false, 0, nil, {}
   local discovery, discovery_arms = nil, 0
   local history, history_unit, history_world = {}, nil, nil
+  -- test.c1: is the aim replicated? My helldiver's network fields, each by a short name that hashes to its id (the
+  -- type's fields come from the game's network config, and only those it still declares are read). Read only: the
+  -- vector-typed ones ten times a second while aiming and around each click, all of them now and then. Also the names
+  -- of the engine's script API once, to look for a way to the point under the crosshair.
+  local aim_probe = (function()
+    local PLAYER, AVATAR, AVATAR_OF = 'un6y1d', 'vvhx8ga', 'u4d1h9a'
+    local QUICK = { 'a5f83fa0', 'b2205a6e', 'edbf0131', 'e3186939', '3a2b4f15', '8bbeb160' }
+    local names, order = {}, {}
+    for id, name in ('98b4aaf0:ngg1nly cd889dbc:i7j8yyl 6ff0e58a:rmgiapw 5faee212:aa431co 7870bb31:lbf26st e3186939:p6m0z7a '
+      .. 'af97ede7:x4joxek bdc1cb8a:rm_qp0d 4b7fae39:ttw6nwy b463e168:yfgmk2i 27c07e3e:an2e2ut 248ff28e:pf64hpz '
+      .. '913af9a2:naal92j 0c09236b:pjr88b0 eef04e89:rnigvgq cf55c86e:iypkmzp a5f83fa0:ada677g 9256767e:x3bdatt '
+      .. '7f6b358d:iy3xd_y a09ccd0a:x_e3yr7 b19ad128:gwz2gww 50ac6619:vzndz8f 8bbeb160:cluqbez 3c01f356:ep100t9 '
+      .. '20efbed4:pgqdzdb d6a4a959:x61a3p5 d49efb40:tufda6u 1aaa6ff0:t5hew7o aea15b36:lcf03kp 8df7fe03:nap6fmy '
+      .. 'b3b69c52:dcbv3hk 1510fa6a:gvhcmse 75536352:em7on_f 268ac291:pfj5c_n dab52fe8:wamrkdl 0565f571:x5ny2ib '
+      .. '169d5ed7:abke0hp 82830aed:x87gzh4 cad5b537:pj4spwo 9ddf0683:jadmb2q 95417727:k65juvf cb0453ea:k7qhi2j '
+      .. '9d550ad3:x9l9mbv bbecde19:aco491e 8fd2d63e:pu8i2y9 2bbcabe5:pkljzl2 d1930672:end4ryz 95c46304:v1p53tp '
+      .. '788b9753:anmjxyi 99901914:eprutg3 1dd07f05:z9y2u4v 39d141d6:cm6zyi0 c336a25c:pifiw5e d7082cbf:nd6ie1n '
+      .. 'be76ee23:bb06lo8 d92082f9:k51bt05 5f8eb478:cjotcdb 8d874f55:ty0yfzj edbf0131:acsj7f5 2932144a:pfy98bc '
+      .. '4441caf8:w4z5a0q c58881d5:ngj6wse 3a2b4f15:nccore8 b2205a6e:txovnjp 1023782c:k7rgyet ce125651:emkftkf '
+      .. 'e4d00fe1:abihmme dae681f4:v1jbchd 6d976352:eu7kgzm a33df340:gs_bq2f c20428c6:vy71z3q 6d1d5cfb:neazbi8'):gmatch('(%x+):(%S+)') do
+      names[id] = name; order[#order + 1] = id
+    end
+    local state = { quick = 0, full = 0, next_quick = 0, next_full = 0, next_look = 0, after_click = 0, typed = {} }
+    local function call(name, tag, ...) return chef.call_kind(name, 'aim probe ' .. tag, ...) end
+    local function declared(type_name)
+      local info = call('Network.object_info', 'objinfo ' .. type_name, type_name)
+      if type(info) ~= 'table' or type(info.fields) ~= 'table' then return nil end
+      local set = {}
+      for _, f in ipairs(info.fields) do
+        local id = type(f) == 'table' and f.id
+        if type(id) == 'number' then id = string.format('%x', id) end
+        if type(id) == 'string' then
+          id = string.gsub(string.lower(id), '^0+', '')
+          set[string.rep('0', 8 - #id) .. id] = true
+        end
+      end
+      return set
+    end
+    local function api_names()
+      local engine = rawget(_G, 'stingray')
+      if type(engine) ~= 'table' then log('engine api: not reachable') return end
+      local tables = {}
+      for name, t in pairs(engine) do if type(t) == 'table' then tables[#tables + 1] = name end end
+      table.sort(tables)
+      log('engine api tables: %s', table.concat(tables, ' '))
+      for _, name in ipairs(tables) do
+        local fns = {}
+        for fn in pairs(engine[name]) do fns[#fns + 1] = tostring(fn) end
+        table.sort(fns)
+        for i = 1, #fns, 40 do log('engine api %s: %s', name, table.concat(fns, ' ', i, math.min(i + 39, #fns))) end
+      end
+    end
+    local function find_avatar(gs)
+      if state.world ~= chef.world_id() then
+        state.world, state.avatar, state.scan, state.fields = chef.world_id(), nil, nil, nil
+      end
+      if state.avatar then
+        if call('GameSession.game_object_exists', 'exists', gs, state.avatar) == true
+           and call('GameSession.game_object_is_type', 'type', gs, state.avatar, AVATAR) == true then return state.avatar end
+        state.avatar = nil
+      end
+      local peer = call('Network.peer_id', 'peer')
+      if not peer then return nil end
+      if not state.scan then
+        if now() < state.next_look then return nil end
+        state.next_look = now() + 2
+        local mine = call('GameSession.objects_owned_by', 'owned', gs, peer)
+        if type(mine) ~= 'table' then return nil end
+        state.scan = { list = {}, at = 1 }
+        for _, g in pairs(mine) do state.scan.list[#state.scan.list + 1] = g end
+      end
+      local scan = state.scan
+      for i = scan.at, math.min(scan.at + 199, #scan.list) do
+        local g = scan.list[i]
+        if call('GameSession.game_object_exists', 'exists', gs, g) == true
+           and call('GameSession.game_object_is_type', 'type', gs, g, PLAYER) == true
+           and call('GameSession.game_object_owner', 'owner', gs, g) == peer then
+          local a = read_field(gs, g, PLAYER, AVATAR_OF, 'aim probe avatar')
+          if type(a) == 'number' and call('GameSession.game_object_exists', 'exists', gs, a) == true
+             and call('GameSession.game_object_is_type', 'type', gs, a, AVATAR) == true then
+            state.avatar, state.scan = a, nil
+            log('aim probe: my helldiver is object %s', tostring(a))
+            return a
+          end
+        end
+      end
+      scan.at = scan.at + 200
+      if scan.at > #scan.list then state.scan = nil end
+      return nil
+    end
+    local function text(v)
+      local kind = type(v)
+      if kind == 'number' then return string.format('%.5f', v) end
+      if v == nil or kind == 'boolean' or kind == 'string' then return tostring(v) end
+      -- (engine values are good for this frame only: to numbers at once, never kept)
+      local x, y, z = chef.call_kind('Vector3.x', 'aim probe vx', v), chef.call_kind('Vector3.y', 'aim probe vy', v),
+                      chef.call_kind('Vector3.z', 'aim probe vz', v)
+      if type(x) == 'number' and type(y) == 'number' and type(z) == 'number' then
+        return string.format('%.4f,%.4f,%.4f', x, y, z)
+      end
+      return tostring(v)
+    end
+    local function read(gs, avatar, id)
+      if not state.fields[id] then return 'undeclared' end
+      if not state.typed[id] then
+        state.typed[id] = true
+        log('aim probe: first read of field %s', id)
+      end
+      return text(call('GameSession.game_object_field', 'field ' .. id, gs, avatar, names[id]))
+    end
+    return function(c, muzzle, clicked, t)
+      if not state.api then state.api = true; api_names() end
+      if clicked then state.after_click = 4 end
+      local click_frame = state.after_click > 0
+      local quick_due = click_frame or (t >= state.next_quick and state.quick < 1500)
+      local full_due = (clicked and state.full < 80) or (t >= state.next_full and state.full < 40)
+      if not (quick_due or full_due) then return end
+      local gs = call('Network.game_session', 'session')
+      if not gs then return end
+      local avatar = find_avatar(gs)
+      if not avatar then return end
+      if not state.fields then
+        state.fields = declared(AVATAR)
+        if not state.fields then log('aim probe: no field info for my helldiver'); state.quick, state.full = 1e9, 1e9; return end
+      end
+      if quick_due then
+        local bits = {}
+        for _, id in ipairs(QUICK) do bits[#bits + 1] = id .. '=' .. read(gs, avatar, id) end
+        log('aim quick t=%.6f camera=%.4f,%.4f,%.4f forward=%.6f,%.6f,%.6f muzzle=%.4f,%.4f,%.4f feet=%s %s',
+            t, c.x, c.y, c.z, c.fx, c.fy, c.fz, muzzle[1], muzzle[2], muzzle[3], tostring(feet_z), table.concat(bits, ' '))
+        state.quick, state.next_quick = state.quick + 1, t + 0.1
+        if state.after_click > 0 then state.after_click = state.after_click - 1 end
+      end
+      if full_due then
+        state.full, state.next_full = state.full + 1, t + 5
+        local bits = {}
+        for i, id in ipairs(order) do
+          bits[#bits + 1] = id .. '=' .. read(gs, avatar, id)
+          if #bits == 12 or i == #order then log('aim full t=%.6f %s', t, table.concat(bits, ' ')); bits = {} end
+        end
+      end
+    end
+  end)()
   local function vector(label, x, y, z)
     if type(x) == 'number' and type(y) == 'number' and type(z) == 'number' then
       log('weapon direction %d %s %.6f %.6f %.6f', count, label, x, y, z)
@@ -1169,6 +1318,7 @@ local weapon_diagnostic = (function()
   return {
     update = function(c, w, muzzle, aim, u, kind, aim_mode)
       local down, t = chef.mouse_down('left') == true, now()
+      if w and muzzle then aim_probe(c, muzzle, down and not previous, t) end
       if history_unit ~= u or history_world ~= chef.world_id() then history = {} end
       history_unit, history_world = u, chef.world_id()
       -- Restore the old test.3-6 new-unit path for GR-8, without assuming a projectile hash.
