@@ -1,4 +1,4 @@
-# Weapon muzzle and prone work: test.5 through test.11
+# Weapon muzzle and prone work: test.5 through test.12
 
 2026-11-01. Based on local installed Steam build 26251122. The user reports grenade arcs fit well after test.4;
 this milestone changes weapon selection/origin/view classification only. Grenade fitting and saved calibration are unchanged.
@@ -337,3 +337,67 @@ Minimal required evidence: with GL-21, fire one stationary prone shot on flat gr
 visibly tilts the torso; use a similar aim direction/elevation and a distant fixed surface. GL-21 is needed because
 its round is traceable, unlike GR-8. For direct GR-8 comparison, repeat those two conditions with GR-8 and note
 which side the real impact differs from the arc. No standing/crouched or broad all-weapon survey is requested.
+
+
+## Test.12: prone correction in the weapon frame
+
+The user observes side error while turning to look sideways prone, even without rough ground. Test.11 captured
+three GL-21 tracked flights and three GR-8 snapshots plus one unusable short vehicle crossbow flight. Avatar aim
+node forward vectors do not track the actual GL-21 direction consistently; node names are not shot semantics.
+Raw observations are preserved in `tests/fixtures/weapon_direction_test11.json`.
+
+Two problems are visible. GL-21 shot 5 is prone (hips 0.178m above feet, torso elevation 11.9deg) despite weapon
+root height 0.5245m, so the old height-only logic selected the mid-root correction. Also, the weapon's own up axis
+rotates strongly as the torso twists: reconstructed GL-21 roll is about +18deg, +15deg, -97deg in shots 3-5.
+Subtracting fixed WORLD yaw/pitch cannot express the same correction when the weapon rolls this much.
+
+No extra experiment/native quaternion API was needed to recover weapon roll. The existing muzzle/root positions,
+root forward F, and already extracted bind-muzzle position (x,y,z) determine the other two rigid weapon axes:
+
+- P = live muzzle minus root, with its component along F removed.
+- In the weapon's orthonormal basis, P = x R + z U and F cross P = z R - x U.
+- Therefore U is parallel to z P minus x (F cross P); normalize it, then R = F cross U.
+
+The observations agree with the static locator geometry: GL-21 along about 0.4377m, perpendicular about 0.0959m;
+GR-8 along 0.3886m, perpendicular 0.1685m. Runtime verifies along/perpendicular lengths against bind data, so a
+missing locator/legacy offset or changed animated geometry falls back to the old world-offset calculation.
+No hardcoded node indices, terrain query, inverse graphics or guessed roll angle is used.
+
+Test.12 applies fixed right/forward/up direction weights in this recovered weapon basis for confirmed prone
+GL-21/GR-8 only. GL-21 uses local right -1.85deg and local up -0.75deg, retaining the ordinary-prone baseline rather
+than fitting a new curve to the three twist cases. GR-8 local angles -1.28277/-1.54815deg are the exact conversion
+of the user-accepted world correction in test.11's flat GR-8 reference shot 1. They are not new GR-8 projectile
+measurements. Weights are precomputed at load and never learned on equip/aim. The final existing +0.6deg lift,
+movement inheritance and gravity remain in world coordinates; only the launch aiming correction is transformed.
+
+Prone selection now uses two avatar nodes, hips and chest, cached per avatar/world and queried once per frame
+only for profiled aimed on-foot weapons. A low pelvis and non-upright torso indicate prone even if the gun rises
+while twisting. Missing/degenerate nodes fall back to legacy weapon-height bands. The geometric thresholds are
+heuristics (hips -0.15..0.45m above feet, torso span 0.1..0.8m with absolute elevation at most about 53deg), not an
+engine stance flag. Very steep ground, unusual poses, changed avatar anatomy and uneven foot/root placement
+remain limitations. Standing/crouched high-pelvis inputs use the old offsets. Vehicle context is separate.
+
+`tools/analyze_prone_frame.py` reproduces the comparison from raw saved positions and static muzzle metadata:
+
+| GL-21 test.11 shot | Previous yaw error | New yaw error | Previous full initial direction error | New full direction error |
+| --- | ---: | ---: | ---: | ---: |
+| 3 | 0.836deg | 0.630deg | 1.242deg | 0.699deg |
+| 4 | 0.767deg | 0.561deg | 0.871deg | 0.542deg |
+| 5 | 1.104deg | 0.027deg | 1.964deg | 0.852deg |
+
+Horizontal actual direction comes from tracked XY positions. Vertical direction is estimated using the existing
+GL-21 speed/drag/gravity model against height versus range. These are recorded-input replays, not test.12 game
+results. The shot-5 residual is largely vertical; this is a partial correction, not full all-angle accuracy.
+GR-8 remains untracked: comparison against CAMERA ONLY improves from 0.679 to 0.111deg and 1.299 to 0.710deg in
+snapshots 2/6, while reference shot 1 is preserved. This does not establish the actual GR-8 flight direction.
+
+145 Lua 5.1 tests pass. Checks include all previous stable GL flight records, twisted-prone tracked records from
+the first frame, no convergence with time, the GR-8 accepted reference, a rigid 90deg weapon-roll case, crouch
+preservation with a lowered gun, corner/aim lag with a physically rigid rotated locator, fallback geometry,
+vehicle eligibility, and grenade/C4/stratagem regressions. Diagnostic logs now distinguish weapon-local from
+world-offset direction; logged legacy offset fields alone are not the final local correction.
+
+Next check: GL-21 and GR-8, prone on ordinary ground, aim forward/left/right without moving the lower body more
+than necessary; one single shot in each direction. Six shots fit the existing three-per-weapon/profile budget.
+Report remaining horizontal AND vertical error. No new terrain search or standing/crouched survey is requested.
+No test.12 runtime accuracy claim or remote push.

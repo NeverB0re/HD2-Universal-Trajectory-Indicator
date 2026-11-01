@@ -1,0 +1,1059 @@
+{
+  "source": "test.11 log 2026-11-01; prone torso changes with sideways aiming, terrain attribution uncertain",
+  "shots": {
+    "1": {
+      "vectors": {
+        "camera-position": [
+          97.68322,
+          -41.003078,
+          10.656925
+        ],
+        "camera-forward": [
+          -0.750715,
+          0.645245,
+          0.141723
+        ],
+        "root-position": [
+          96.380974,
+          -40.620125,
+          10.445102
+        ],
+        "root-forward": [
+          -0.735835,
+          0.662021,
+          0.142388
+        ],
+        "muzzle-forward": [
+          -0.735835,
+          0.662021,
+          0.142388
+        ],
+        "muzzle-position": [
+          96.095566,
+          -40.397774,
+          10.665249
+        ],
+        "predicted-velocity": [
+          -188.208219,
+          161.469543,
+          31.705726
+        ],
+        "player-velocity": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "avatar-root-forward": [
+          -0.769101,
+          0.639127,
+          0.0
+        ],
+        "avatar-weapon_aim-position": [
+          94.90934,
+          -39.296238,
+          10.72989
+        ],
+        "avatar-weapon_aim-forward": [
+          -0.347057,
+          0.415389,
+          0.840835
+        ],
+        "avatar-aim_weapon-position": [
+          95.438591,
+          -40.371025,
+          8.803793
+        ],
+        "avatar-aim_weapon-forward": [
+          -0.708925,
+          -0.678427,
+          0.192777
+        ],
+        "avatar-boss_aim-position": [
+          97.231361,
+          -41.510155,
+          7.373324
+        ],
+        "avatar-boss_aim-forward": [
+          -0.078799,
+          0.096965,
+          -0.992164
+        ],
+        "avatar-hips-position": [
+          96.83316,
+          -41.388748,
+          10.192558
+        ],
+        "avatar-hips-forward": [
+          -0.019525,
+          0.050405,
+          -0.998538
+        ],
+        "avatar-chest-position": [
+          96.584549,
+          -41.150585,
+          10.305666
+        ],
+        "avatar-chest-forward": [
+          0.70933,
+          0.679145,
+          -0.188717
+        ],
+        "avatar-l_clavicle-position": [
+          96.463142,
+          -41.110462,
+          10.376997
+        ],
+        "avatar-l_clavicle-forward": [
+          0.746934,
+          0.148331,
+          0.648141
+        ],
+        "avatar-r_clavicle-position": [
+          96.565536,
+          -41.012428,
+          10.349755
+        ],
+        "avatar-r_clavicle-forward": [
+          -0.32916,
+          0.753662,
+          -0.5689
+        ]
+      },
+      "samples": [],
+      "header": "shot t=181.483849 world=4 kind=9f80d67a12a7e40f hand=20 root-height=0.4584",
+      "offset": "offset-deg -1.350000 1.500000 profile=on-foot/GR-8-low-root-estimate fixed=true"
+    },
+    "2": {
+      "vectors": {
+        "camera-position": [
+          97.611923,
+          -56.142002,
+          12.787333
+        ],
+        "camera-forward": [
+          -0.118851,
+          0.9881,
+          0.097637
+        ],
+        "root-position": [
+          97.023987,
+          -54.952522,
+          12.378606
+        ],
+        "root-forward": [
+          -0.08382,
+          0.992005,
+          0.094337
+        ],
+        "muzzle-forward": [
+          -0.08382,
+          0.992005,
+          0.094337
+        ],
+        "muzzle-position": [
+          97.053894,
+          -54.576641,
+          12.571429
+        ],
+        "predicted-velocity": [
+          -26.828673,
+          247.776574,
+          19.672099
+        ],
+        "player-velocity": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "avatar-root-forward": [
+          -0.621516,
+          0.782961,
+          -0.026261
+        ],
+        "avatar-weapon_aim-position": [
+          96.855331,
+          -52.968895,
+          12.568445
+        ],
+        "avatar-weapon_aim-forward": [
+          0.280903,
+          0.728181,
+          0.625177
+        ],
+        "avatar-aim_weapon-position": [
+          95.912506,
+          -54.065823,
+          11.197036
+        ],
+        "avatar-aim_weapon-forward": [
+          -0.791502,
+          0.015689,
+          0.610965
+        ],
+        "avatar-boss_aim-position": [
+          96.109428,
+          -56.852695,
+          9.743736
+        ],
+        "avatar-boss_aim-forward": [
+          -0.439517,
+          -0.181237,
+          -0.87976
+        ],
+        "avatar-hips-position": [
+          96.855721,
+          -55.798889,
+          12.284196
+        ],
+        "avatar-hips-forward": [
+          -0.321149,
+          -0.240851,
+          -0.91589
+        ],
+        "avatar-chest-position": [
+          96.796532,
+          -55.471596,
+          12.388202
+        ],
+        "avatar-chest-forward": [
+          0.794027,
+          -0.015589,
+          -0.607682
+        ],
+        "avatar-l_clavicle-position": [
+          96.778442,
+          -55.35957,
+          12.480719
+        ],
+        "avatar-l_clavicle-forward": [
+          0.842894,
+          -0.506352,
+          0.182036
+        ],
+        "avatar-r_clavicle-position": [
+          96.893066,
+          -55.361816,
+          12.392999
+        ],
+        "avatar-r_clavicle-forward": [
+          0.042714,
+          0.774676,
+          -0.630914
+        ]
+      },
+      "samples": [],
+      "header": "shot t=207.477633 world=4 kind=9f80d67a12a7e40f hand=20 root-height=0.2351",
+      "offset": "offset-deg -1.350000 1.500000 profile=on-foot/GR-8-low-root-estimate fixed=true"
+    },
+    "3": {
+      "vectors": {
+        "camera-position": [
+          97.69397,
+          -41.693039,
+          10.532415
+        ],
+        "camera-forward": [
+          -0.873211,
+          0.430009,
+          0.229335
+        ],
+        "root-position": [
+          96.668808,
+          -41.544647,
+          10.277715
+        ],
+        "root-forward": [
+          -0.84586,
+          0.47986,
+          0.232928
+        ],
+        "muzzle-forward": [
+          -0.84586,
+          0.47986,
+          0.232928
+        ],
+        "muzzle-position": [
+          96.331665,
+          -41.319283,
+          10.468414
+        ],
+        "predicted-velocity": [
+          -86.136866,
+          45.273534,
+          23.038129
+        ],
+        "player-velocity": [
+          -4.6e-05,
+          0.0,
+          0.0
+        ],
+        "avatar-root-forward": [
+          -0.498785,
+          0.866726,
+          0.0
+        ],
+        "avatar-weapon_aim-position": [
+          94.976479,
+          -40.587185,
+          10.745017
+        ],
+        "avatar-weapon_aim-forward": [
+          -0.530616,
+          0.455697,
+          0.714693
+        ],
+        "avatar-aim_weapon-position": [
+          95.67205,
+          -41.166195,
+          8.837066
+        ],
+        "avatar-aim_weapon-forward": [
+          -0.78017,
+          -0.470969,
+          0.411733
+        ],
+        "avatar-boss_aim-position": [
+          96.100861,
+          -43.417847,
+          7.779503
+        ],
+        "avatar-boss_aim-forward": [
+          -0.488503,
+          -0.206809,
+          -0.8477
+        ],
+        "avatar-hips-position": [
+          97.05719,
+          -42.231724,
+          10.187808
+        ],
+        "avatar-hips-forward": [
+          -0.415389,
+          -0.346375,
+          -0.841116
+        ],
+        "avatar-chest-position": [
+          96.890572,
+          -41.926403,
+          10.290973
+        ],
+        "avatar-chest-forward": [
+          0.781389,
+          0.472215,
+          -0.407975
+        ],
+        "avatar-l_clavicle-position": [
+          96.792854,
+          -41.850365,
+          10.369112
+        ],
+        "avatar-l_clavicle-forward": [
+          0.846942,
+          0.082144,
+          0.525302
+        ],
+        "avatar-r_clavicle-position": [
+          96.905647,
+          -41.7822,
+          10.31022
+        ],
+        "avatar-r_clavicle-forward": [
+          -0.254269,
+          0.870985,
+          -0.420397
+        ]
+      },
+      "samples": [
+        [
+          1,
+          0.036069,
+          96.342201,
+          -41.324444,
+          10.465629
+        ],
+        [
+          1,
+          0.071751,
+          93.340935,
+          -39.80246,
+          11.313047
+        ],
+        [
+          1,
+          0.107198,
+          90.546249,
+          -38.385235,
+          12.089859
+        ],
+        [
+          1,
+          0.142576,
+          87.920853,
+          -37.053864,
+          12.807456
+        ],
+        [
+          1,
+          0.177957,
+          85.436142,
+          -35.793831,
+          13.474462
+        ],
+        [
+          1,
+          0.213747,
+          83.067833,
+          -34.592827,
+          14.098005
+        ],
+        [
+          1,
+          0.250001,
+          80.782654,
+          -33.433983,
+          14.687156
+        ],
+        [
+          1,
+          0.286571,
+          78.578941,
+          -32.316448,
+          15.242486
+        ],
+        [
+          1,
+          0.32332,
+          76.460686,
+          -31.242252,
+          15.763258
+        ]
+      ],
+      "header": "shot t=220.481973 world=4 kind=02eecd0b1fa49630 hand=51 root-height=0.2903",
+      "offset": "offset-deg -1.840000 0.750000 profile=on-foot/low-root fixed=true"
+    },
+    "4": {
+      "vectors": {
+        "camera-position": [
+          90.706848,
+          -47.956078,
+          9.852553
+        ],
+        "camera-forward": [
+          0.352321,
+          0.901967,
+          0.249652
+        ],
+        "root-position": [
+          90.921822,
+          -46.377495,
+          9.714075
+        ],
+        "root-forward": [
+          0.397638,
+          0.880919,
+          0.256642
+        ],
+        "muzzle-forward": [
+          0.397638,
+          0.880919,
+          0.256642
+        ],
+        "muzzle-position": [
+          91.108421,
+          -46.023663,
+          9.916077
+        ],
+        "predicted-velocity": [
+          36.94038,
+          89.385026,
+          25.411115
+        ],
+        "player-velocity": [
+          4.6e-05,
+          -2.3e-05,
+          0.0
+        ],
+        "avatar-root-forward": [
+          0.410771,
+          0.862806,
+          0.294676
+        ],
+        "avatar-weapon_aim-position": [
+          91.716919,
+          -44.615734,
+          10.227402
+        ],
+        "avatar-weapon_aim-forward": [
+          0.399809,
+          0.310829,
+          0.862287
+        ],
+        "avatar-aim_weapon-position": [
+          90.857758,
+          -45.553127,
+          8.074831
+        ],
+        "avatar-aim_weapon-forward": [
+          -0.665625,
+          0.666103,
+          0.336526
+        ],
+        "avatar-boss_aim-position": [
+          89.64389,
+          -46.16935,
+          6.960235
+        ],
+        "avatar-boss_aim-forward": [
+          -0.189882,
+          0.511897,
+          -0.837798
+        ],
+        "avatar-hips-position": [
+          90.402161,
+          -46.964508,
+          9.589709
+        ],
+        "avatar-hips-forward": [
+          -0.225349,
+          0.449884,
+          -0.864189
+        ],
+        "avatar-chest-position": [
+          90.571518,
+          -46.679459,
+          9.755904
+        ],
+        "avatar-chest-forward": [
+          0.667357,
+          -0.66626,
+          -0.332765
+        ],
+        "avatar-l_clavicle-position": [
+          90.617905,
+          -46.552177,
+          9.811444
+        ],
+        "avatar-l_clavicle-forward": [
+          0.367149,
+          -0.694789,
+          0.618441
+        ],
+        "avatar-r_clavicle-position": [
+          90.714241,
+          -46.648354,
+          9.763409
+        ],
+        "avatar-r_clavicle-forward": [
+          0.779169,
+          0.398795,
+          -0.483589
+        ]
+      },
+      "samples": [
+        [
+          1,
+          0.036058,
+          91.103912,
+          -46.034878,
+          9.912621
+        ],
+        [
+          1,
+          0.071732,
+          92.341957,
+          -42.921711,
+          10.813722
+        ],
+        [
+          1,
+          0.1072,
+          93.495712,
+          -40.020473,
+          11.641193
+        ],
+        [
+          1,
+          0.142576,
+          94.578819,
+          -37.296898,
+          12.405833
+        ],
+        [
+          1,
+          0.177926,
+          95.603821,
+          -34.719448,
+          13.117314
+        ],
+        [
+          1,
+          0.213752,
+          96.580879,
+          -32.262535,
+          13.783312
+        ],
+        [
+          1,
+          0.250014,
+          97.524521,
+          -29.889656,
+          14.41401
+        ],
+        [
+          1,
+          0.286576,
+          98.433907,
+          -27.602922,
+          15.008986
+        ],
+        [
+          1,
+          0.323329,
+          99.307587,
+          -25.405972,
+          15.567586
+        ]
+      ],
+      "header": "shot t=233.048604 world=4 kind=02eecd0b1fa49630 hand=51 root-height=0.3054",
+      "offset": "offset-deg -1.840000 0.750000 profile=on-foot/low-root fixed=true"
+    },
+    "5": {
+      "vectors": {
+        "camera-position": [
+          91.630814,
+          -44.814999,
+          10.434036
+        ],
+        "camera-forward": [
+          0.862242,
+          -0.453483,
+          0.225592
+        ],
+        "root-position": [
+          92.775223,
+          -44.456684,
+          10.427595
+        ],
+        "root-forward": [
+          0.850124,
+          -0.455753,
+          0.263777
+        ],
+        "muzzle-forward": [
+          0.850124,
+          -0.455753,
+          0.263777
+        ],
+        "muzzle-position": [
+          93.195107,
+          -44.573753,
+          10.5316
+        ],
+        "predicted-velocity": [
+          85.256171,
+          -45.45728,
+          25.787959
+        ],
+        "player-velocity": [
+          0.0,
+          2.3e-05,
+          0.0
+        ],
+        "avatar-root-forward": [
+          0.508133,
+          0.860154,
+          0.044002
+        ],
+        "avatar-weapon_aim-position": [
+          94.477364,
+          -45.367874,
+          10.94801
+        ],
+        "avatar-weapon_aim-forward": [
+          0.879542,
+          -0.391644,
+          0.270224
+        ],
+        "avatar-aim_weapon-position": [
+          93.57225,
+          -45.711643,
+          11.214485
+        ],
+        "avatar-aim_weapon-forward": [
+          0.550435,
+          -0.185077,
+          -0.814106
+        ],
+        "avatar-boss_aim-position": [
+          94.507812,
+          -46.266243,
+          10.970049
+        ],
+        "avatar-boss_aim-forward": [
+          0.888777,
+          -0.329673,
+          0.31842
+        ],
+        "avatar-hips-position": [
+          92.318703,
+          -44.672825,
+          10.081111
+        ],
+        "avatar-hips-forward": [
+          0.639642,
+          -0.554479,
+          0.532363
+        ],
+        "avatar-chest-position": [
+          92.480537,
+          -44.344551,
+          10.158185
+        ],
+        "avatar-chest-forward": [
+          -0.550133,
+          0.189144,
+          0.813375
+        ],
+        "avatar-l_clavicle-position": [
+          92.616119,
+          -44.29018,
+          10.148321
+        ],
+        "avatar-l_clavicle-forward": [
+          -0.815541,
+          0.566807,
+          0.116714
+        ],
+        "avatar-r_clavicle-position": [
+          92.536713,
+          -44.262878,
+          10.265734
+        ],
+        "avatar-r_clavicle-forward": [
+          0.303681,
+          -0.096687,
+          0.947855
+        ]
+      },
+      "samples": [
+        [
+          1,
+          0.036152,
+          93.182213,
+          -44.56654,
+          10.528138
+        ],
+        [
+          1,
+          0.071944,
+          96.140785,
+          -46.218018,
+          11.321115
+        ],
+        [
+          1,
+          0.107509,
+          98.89769,
+          -47.756927,
+          12.047679
+        ],
+        [
+          1,
+          0.143005,
+          101.485382,
+          -49.201382,
+          12.717413
+        ],
+        [
+          1,
+          0.17841,
+          103.931252,
+          -50.566669,
+          13.338251
+        ],
+        [
+          1,
+          0.214224,
+          106.258957,
+          -51.865997,
+          13.916862
+        ],
+        [
+          1,
+          0.250529,
+          108.508392,
+          -53.121639,
+          14.463476
+        ],
+        [
+          1,
+          0.287123,
+          110.675064,
+          -54.331078,
+          14.97713
+        ],
+        [
+          1,
+          0.323869,
+          112.756348,
+          -55.492851,
+          15.457512
+        ]
+      ],
+      "header": "shot t=242.558367 world=4 kind=02eecd0b1fa49630 hand=51 root-height=0.5245",
+      "offset": "offset-deg -0.130000 0.950000 profile=on-foot/mid-root fixed=true"
+    },
+    "6": {
+      "vectors": {
+        "camera-position": [
+          97.773193,
+          -41.259003,
+          10.682271
+        ],
+        "camera-forward": [
+          -0.611516,
+          -0.777911,
+          0.144581
+        ],
+        "root-position": [
+          97.423615,
+          -42.346939,
+          10.293456
+        ],
+        "root-forward": [
+          -0.647573,
+          -0.749692,
+          0.136422
+        ],
+        "muzzle-forward": [
+          -0.647573,
+          -0.749692,
+          0.136422
+        ],
+        "muzzle-position": [
+          97.137115,
+          -42.580048,
+          10.500672
+        ],
+        "predicted-velocity": [
+          -157.753814,
+          -191.575134,
+          30.211057
+        ],
+        "player-velocity": [
+          -4.6e-05,
+          2.3e-05,
+          0.0
+        ],
+        "avatar-root-forward": [
+          -0.823267,
+          0.56739,
+          0.017316
+        ],
+        "avatar-weapon_aim-position": [
+          96.132744,
+          -43.848492,
+          10.571678
+        ],
+        "avatar-weapon_aim-forward": [
+          -0.681329,
+          -0.703206,
+          0.203203
+        ],
+        "avatar-aim_weapon-position": [
+          97.040947,
+          -44.075829,
+          10.22043
+        ],
+        "avatar-aim_weapon-forward": [
+          0.572677,
+          -0.290555,
+          0.766563
+        ],
+        "avatar-boss_aim-position": [
+          97.118675,
+          -44.990257,
+          9.831941
+        ],
+        "avatar-boss_aim-forward": [
+          -0.611876,
+          -0.780702,
+          -0.126936
+        ],
+        "avatar-hips-position": [
+          98.225533,
+          -42.390724,
+          10.204335
+        ],
+        "avatar-hips-forward": [
+          -0.361145,
+          -0.927769,
+          -0.093911
+        ],
+        "avatar-chest-position": [
+          97.907608,
+          -42.226051,
+          10.281939
+        ],
+        "avatar-chest-forward": [
+          -0.573485,
+          0.294113,
+          -0.764599
+        ],
+        "avatar-l_clavicle-position": [
+          97.849411,
+          -42.237442,
+          10.415805
+        ],
+        "avatar-l_clavicle-forward": [
+          -0.051507,
+          0.983082,
+          -0.175776
+        ],
+        "avatar-r_clavicle-position": [
+          97.766624,
+          -42.194984,
+          10.305433
+        ],
+        "avatar-r_clavicle-forward": [
+          -0.816954,
+          -0.54522,
+          -0.187938
+        ]
+      },
+      "samples": [],
+      "header": "shot t=262.763279 world=4 kind=9f80d67a12a7e40f hand=20 root-height=0.2801",
+      "offset": "offset-deg -1.350000 1.500000 profile=on-foot/GR-8-low-root-estimate fixed=true"
+    },
+    "7": {
+      "vectors": {
+        "camera-position": [
+          88.605782,
+          -38.630161,
+          13.663939
+        ],
+        "camera-forward": [
+          -0.275844,
+          -0.204524,
+          -0.939191
+        ],
+        "root-position": [
+          88.551224,
+          -38.984409,
+          11.910946
+        ],
+        "root-forward": [
+          -0.586972,
+          -0.322934,
+          -0.742414
+        ],
+        "muzzle-forward": [
+          -0.586972,
+          -0.322934,
+          -0.742414
+        ],
+        "muzzle-position": [
+          88.196114,
+          -39.192379,
+          11.619869
+        ],
+        "predicted-velocity": [
+          -57.668211,
+          -31.727254,
+          -75.284519
+        ],
+        "player-velocity": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "avatar-root-forward": [
+          0.912259,
+          -0.409609,
+          -0.001947
+        ],
+        "avatar-weapon_aim-position": [
+          87.37735,
+          -39.630238,
+          10.426208
+        ],
+        "avatar-weapon_aim-forward": [
+          -0.863599,
+          -0.502925,
+          0.035527
+        ],
+        "avatar-aim_weapon-position": [
+          87.83638,
+          -38.378929,
+          10.516212
+        ],
+        "avatar-aim_weapon-forward": [
+          0.070502,
+          -0.890301,
+          -0.449881
+        ],
+        "avatar-boss_aim-position": [
+          87.260284,
+          -39.962444,
+          11.546347
+        ],
+        "avatar-boss_aim-forward": [
+          -0.874146,
+          -0.474561,
+          -0.103251
+        ],
+        "avatar-hips-position": [
+          89.027145,
+          -39.003242,
+          11.755042
+        ],
+        "avatar-hips-forward": [
+          -0.988533,
+          0.01902,
+          -0.149804
+        ],
+        "avatar-chest-position": [
+          88.898308,
+          -39.096363,
+          12.098473
+        ],
+        "avatar-chest-forward": [
+          -0.072176,
+          0.889268,
+          0.451656
+        ],
+        "avatar-l_clavicle-position": [
+          88.782433,
+          -39.185822,
+          12.095946
+        ],
+        "avatar-l_clavicle-forward": [
+          0.612662,
+          0.120496,
+          0.781106
+        ],
+        "avatar-r_clavicle-position": [
+          88.772011,
+          -39.057453,
+          12.161143
+        ],
+        "avatar-r_clavicle-forward": [
+          -0.567631,
+          0.583609,
+          -0.580685
+        ]
+      },
+      "samples": [
+        [
+          1,
+          0.036001,
+          88.200523,
+          -39.190891,
+          11.630043
+        ]
+      ],
+      "header": "shot t=284.252753 world=4 kind=f49227a0630a3f7f hand=70 root-height=0.9722",
+      "offset": "offset-deg 0.000000 1.500000 profile=vehicle/unmeasured fixed=true"
+    }
+  }
+}

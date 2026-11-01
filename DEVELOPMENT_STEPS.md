@@ -169,3 +169,13 @@ wrapper exposes forward and yaw, not roll, and existing logs lack a body frame. 
 names already present in extracted metadata to record bounded shot-time vectors/positions. This is necessary
 slope evidence, not a new calibration or a change to the accepted flat-ground aim. All 141 tests pass. Next:
 compare flat/tilted prone GL-21 tracked rounds and GR-8 aim nodes before choosing a local-frame correction.
+
+
+## Step 4 prone twist correction: 1.1.1-test.12
+
+Test.11 confirms varying torso/weapon orientation while aiming sideways prone. Recover rigid weapon right/up
+from existing animated muzzle/root positions and static bind metadata; no extra runtime experiment/API needed.
+Apply fixed local-frame launch correction for prone GL-21/GR-8; keep world gravity/lift and other contexts.
+Classify profiled prone poses by cached hips/chest geometry, retaining height fallback when unavailable.
+Saved GL-21 twist records improve horizontally and in full initial direction, but residual error remains.
+145 tests pass; test.12 runtime pending and GR-8 still lacks tracked projectile evidence. See WEAPON_MUZZLES.md.

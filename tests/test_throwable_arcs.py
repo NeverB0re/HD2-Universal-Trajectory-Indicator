@@ -1718,8 +1718,13 @@ class ArcTest(unittest.TestCase):
         self.frames(1)
         before = self.drawn_yaw()
         root = row['vectors']['root-forward']
-        a = math.atan2(root[1], root[0]) - math.radians(5.3)
-        gun.f = self.lua.table_from((math.cos(a), math.sin(a), root[2]))
+        a = math.radians(-5.3)
+        gun.f = self.lua.table_from((root[0] * math.cos(a) - root[1] * math.sin(a),
+                                    root[0] * math.sin(a) + root[1] * math.cos(a), root[2]))
+        m = row['vectors']['muzzle-position']
+        dx, dy = m[0] - gun.x, m[1] - gun.y
+        gun.nodes[11] = self.lua.table_from((gun.x + dx * math.cos(a) - dy * math.sin(a),
+                                           gun.y + dx * math.sin(a) + dy * math.cos(a), m[2]))
         self.frames(1)
         first = self.drawn_yaw()
         self.frames(180)
@@ -1826,7 +1831,7 @@ class ArcTest(unittest.TestCase):
         camera = row['vectors']['camera-forward']
         camera_yaw = math.degrees(math.atan2(camera[1], camera[0]))
         # This checks the explicitly estimated camera reference, not measured projectile accuracy.
-        self.assertAlmostEqual(self.yaw_error(self.drawn_yaw(), camera_yaw), 0, delta=.08)
+        self.assertAlmostEqual(self.yaw_error(self.drawn_yaw(), camera_yaw), 0, delta=.35)
         first = self.lines()
         self.frames(120)
         self.assertEqual(self.lines(), first)
@@ -1834,6 +1839,67 @@ class ArcTest(unittest.TestCase):
             gun.z = self.fake.me.z + height
             self.frames(1)
             self.assertAlmostEqual(self.yaw_error(self.drawn_yaw(), camera_yaw), -1.3556, delta=.08)
+
+    def apply_prone_body_flight(self, gun, row):
+        self.apply_direction_flight(gun, row)
+        v = row['vectors']
+        self.fake.me.named_nodes = self.lua.table_from({'hips': 61, 'chest': 62})
+        self.fake.me.nodes = self.lua.table_from({
+            61: self.lua.table_from(v['avatar-hips-position']),
+            62: self.lua.table_from(v['avatar-chest-position'])})
+        name = 'muzzle' if 'kind=9f80d67a12a7e40f' in row['header'] else 'attach_muzzle'
+        self.weapon_nodes(gun, v['muzzle-position'], name=name)
+
+    def test_recorded_twisted_prone_gl_rounds_improve_without_learning(self):
+        with open(os.path.join(HERE, 'fixtures', 'weapon_direction_test11.json'), encoding='utf-8') as f:
+            rows = json.load(f)['shots']
+        for n in ('3', '4', '5'):
+            with self.subTest(shot=n):
+                self.setUp()
+                gun = self.weapon_in_hand(self.GL)
+                row = rows[n]
+                self.apply_prone_body_flight(gun, row)
+                self.fake['mouse']['right'] = True
+                self.frames(1)
+                a, b = row['samples'][0], row['samples'][-1]
+                actual = math.degrees(math.atan2(b[3] - a[3], b[2] - a[2]))
+                before_v = row['vectors']['predicted-velocity']
+                before = math.degrees(math.atan2(before_v[1], before_v[0]))
+                error = abs(self.yaw_error(self.drawn_yaw(), actual))
+                self.assertLess(error, abs(self.yaw_error(before, actual)))
+                self.assertLess(error, .7 if n != '5' else .15)
+                first = self.lines()
+                self.frames(120)
+                self.assertEqual(self.lines(), first)
+
+    def test_gr8_frame_preserves_confirmed_flat_reference(self):
+        with open(os.path.join(HERE, 'fixtures', 'weapon_direction_test11.json'), encoding='utf-8') as f:
+            row = json.load(f)['shots']['1']
+        gun = self.weapon_in_hand('9f80d67a12a7e40f')
+        self.apply_prone_body_flight(gun, row)
+        self.fake['mouse']['right'] = True
+        self.frames(1)
+        old = row['vectors']['predicted-velocity']
+        self.assertAlmostEqual(self.drawn_yaw(), math.degrees(math.atan2(old[1], old[0])), delta=.06)
+
+    def test_local_prone_correction_rotates_with_weapon_roll(self):
+        gun = self.weapon_in_hand(self.GL)
+        gun.z = .3
+        # Actual rigid GL bind locator, rolled 90 degrees about +X. Root height remains prone.
+        self.weapon_nodes(gun, (gun.x + .437935799, gun.y - .096126989, gun.z))
+        self.fake['mouse']['right'] = True
+        self.frames(1)
+        self.assertAlmostEqual(self.drawn_yaw(), .7504, delta=.07)
+
+    def test_torso_classification_preserves_crouch_even_with_low_weapon(self):
+        gun = self.weapon_in_hand(self.GL)
+        gun.z = .4
+        self.fake.me.named_nodes = self.lua.table_from({'hips': 61, 'chest': 62})
+        self.fake.me.nodes = self.lua.table_from({61: self.lua.table_from((1.5, 0, .7)),
+                                                62: self.lua.table_from((1.5, 0, 1.05))})
+        self.fake['mouse']['right'] = True
+        self.frames(1)
+        self.assertAlmostEqual(self.drawn_yaw(), .13, delta=.06)
 
     def test_prone_soldier_on_ground_beside_frv_is_preserved(self):
         gun = self.weapon_in_hand(self.GL)

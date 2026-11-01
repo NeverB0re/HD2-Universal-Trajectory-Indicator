@@ -69,12 +69,12 @@ Loader and enable both.
 ## Working on it
 
 Current completion work and validation boundaries: [DEVELOPMENT_STEPS.md](DEVELOPMENT_STEPS.md).
-`1.1.1-test.11` uses fixed weapon/context aiming corrections, replacing live weapon-angle learning that could
-carry a passenger correction into on-foot aim. GL-21 uses offline-measured geometry profiles; GR-8 has an explicitly estimated low-root yaw correction. Other
-weapon/vehicle aiming uses unmeasured fixed defaults. Live muzzle/heading/movement/flight calculation
-continues. The FRV raised-weapon check now includes the supply variant omitted in test.9. Passive shot logs now reserve budget per
-weapon/profile. See [WEAPON_MUZZLES.md](WEAPON_MUZZLES.md) for data, limits and the focused test.
-All 141 offline tests pass. The user confirmed GR-8 test.10 prone fit but found terrain-dependent error. Test.11 adds bounded shot-time avatar aim/torso-node diagnostics; uneven-ground correction remains unresolved. Grenade fitting and saved
+`1.1.1-test.12` applies fixed weapon-frame correction to prone GL-21/GR-8, so the correction follows weapon roll
+while aiming sideways. Cached hips/chest geometry improves prone classification when the gun rises. It uses the
+existing actual muzzle and static locator metadata; no learning or fixed-distance convergence is introduced.
+Standing/crouched offsets, vehicle context, physics and other weapons retain their existing calculation.
+All 145 offline tests pass; saved twisted-prone flights improve but residual error remains and test.12 gameplay
+is unverified. See [WEAPON_MUZZLES.md](WEAPON_MUZZLES.md) for evidence, bounds and the focused check. Grenade fitting and saved
 calibration are unchanged from the user-accepted test.4. Existing stratagem/C4 behavior, native
 grenade profiles and automatic learning remain.
 

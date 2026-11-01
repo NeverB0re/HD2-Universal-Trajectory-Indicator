@@ -9,7 +9,7 @@
 -- Transmog's catalog (Nexus 16633).
 local chef = ...
 local M = {}
-local VERSION = '1.1.1-test.11'
+local VERSION = '1.1.1-test.12'
 
 if chef.has and chef.has('own_log') then chef.own_log('throwable_arcs') end
 local function log(fmt, ...) chef.log(fmt, ...) end
@@ -800,14 +800,27 @@ local AIM_PROFILES = {
   -- this yaw and the 0.65m band are explicit estimates, not GL-21 data or a fitted GR-8 trajectory.
   ['9f80d67a12a7e40f'] = {
     low_height = 0.65,
+    -- bind muzzle XYZ; fixed correction right/up degrees in the weapon frame. Flat reference: test.11 shot 1.
+    frame = { -0.031969439, 0.388560981, 0.165411800, -1.28277, -1.54815 },
     { -1.35, 1.5, 'on-foot/GR-8-low-root-estimate' }, AIM_OFF, AIM_OFF,
   },
   ['02eecd0b1fa49630'] = {
+    frame = { 0, 0.437935799, 0.096126989, -1.85, -0.75 },
     { -1.84, 0.75, 'on-foot/low-root' },
     { -0.13, 0.95, 'on-foot/mid-root' },
     { 0.06, 1.17, 'on-foot/high-root' },
   },
 }
+-- Precompute local direction weights once, never fit or change them when equipping/aiming.
+do
+  for _, profile in pairs(AIM_PROFILES) do
+    local f = profile.frame
+    if f then
+      local yaw, pitch = math.rad(f[4]), math.rad(f[5])
+      f.r, f.f, f.u = math.sin(yaw) * math.cos(pitch), math.cos(yaw) * math.cos(pitch), math.sin(pitch)
+    end
+  end
+end
 -- First person: a nearby camera at the weapon's sight; root distance is only a compatibility fallback. Actual hand
 -- proximity can identify a held weapon despite a lagging barrel while prone; without the hand, retain HELD_ALONG.
 local FIRST_PERSON = 0.9          -- compatibility fallback if the sight node cannot be read
@@ -975,29 +988,86 @@ local function launch(c, w, mx, my, aim, from)
   return px, py, pz, hx * s + hy * across, hy * s - hx * across, w[1] * math.sin(pitch)
 end
 
+-- Torso geometry distinguishes a twisted prone torso from a crouch even when the weapon is lifted.
+-- Only two cached node positions, once per frame while a profiled on-foot weapon is aimed. Unknown -> legacy bands.
+local prone_torso = (function()
+  local state = {}
+  return function()
+    if not (me_unit and me and chef.unit_node) then return nil end
+    local t, wid = now(), chef.world_id()
+    if state.unit ~= me_unit or state.world ~= wid then state = { unit = me_unit, world = wid, next = 0 } end
+    if state.at == t then return state.value end
+    state.at, state.value = t, nil
+    if t >= state.next and (not state.hips or not state.chest) then
+      state.next = t + GRIP_RETRY
+      state.hips = state.hips or chef.unit_node(me_unit, 'hips')
+      state.chest = state.chest or chef.unit_node(me_unit, 'chest')
+    end
+    if not (state.hips and state.chest) then return nil end
+    local hx, hy, hz = chef.unit_position(me_unit, state.hips)
+    local cx, cy, cz = chef.unit_position(me_unit, state.chest)
+    if not (hx and cx) then return nil end
+    local dx, dy, dz = cx - hx, cy - hy, cz - hz
+    local length2 = dx * dx + dy * dy + dz * dz
+    if length2 ~= length2 or length2 < 0.01 or length2 > 0.64 then return nil end
+    state.value = hz - me[3] >= -0.15 and hz - me[3] < 0.45 and dz * dz <= 0.64 * length2
+    return state.value
+  end
+end)()
+
 -- Select a fixed profile from current geometry, not elapsed aiming time or previous observations.
--- Height bands are geometry groups, not a native stance enum. GL-21 is fitted; GR-8 low-root is estimated.
--- Vehicle always has its own fallback.
+-- Torso geometry has priority over weapon height; missing torso data uses legacy height bands.
+-- No native stance enum is assumed. Vehicle always has its own fallback.
 local function weapon_profile(kind, u)
   local seated, _, _, up = in_vehicle()
-  if seated and up and up >= 0.35 then return AIM_PROFILES.vehicle end
+  if seated and up and up >= 0.35 then return AIM_PROFILES.vehicle, false end
   local profiles = AIM_PROFILES[kind]
   if profiles and me then
     local _, _, z = chef.unit_position(u)
     if z then
       local height = z - me[3]
-      return profiles[height < (profiles.low_height or 0.5) and 1 or (height < 1 and 2 or 3)]
+      local prone = prone_torso()
+      if prone == nil then prone = height < (profiles.low_height or 0.5) end
+      return profiles[prone and 1 or (height < 1 and 2 or 3)], prone
     end
   end
   return AIM_OFF
 end
 
-local function weapon_aim(c, kind, u)
+local function weapon_aim(c, kind, u, muzzle)
   local fx, fy, fz = chef.unit_rotation(u)
   if type(fx) ~= 'number' then return nil end
-  local off = weapon_profile(kind, u)
+  local off, prone = weapon_profile(kind, u)
+  local frame = AIM_PROFILES[kind] and AIM_PROFILES[kind].frame
+  if prone and frame and muzzle then
+    local x, y, z = chef.unit_position(u)
+    local fl = math.sqrt(fx * fx + fy * fy + fz * fz)
+    if x and fl > 0.9 and fl < 1.1 then
+      local ax, ay, az = fx / fl, fy / fl, fz / fl
+      local dx, dy, dz = muzzle[1] - x, muzzle[2] - y, muzzle[3] - z
+      local along = dx * ax + dy * ay + dz * az
+      local px, py, pz = dx - along * ax, dy - along * ay, dz - along * az
+      local pl = math.sqrt(px * px + py * py + pz * pz)
+      -- Rigid locator check: never interpret a legacy offset/changed asset/recoil deformation as weapon roll.
+      if pl > 0.005 and math.abs(along - frame[2]) < 0.03
+         and math.abs(pl - math.sqrt(frame[1] ^ 2 + frame[3] ^ 2)) < 0.015 then
+        -- P = bindX * R + bindZ * U, F cross P = bindZ * R - bindX * U.
+        local qx, qy, qz = ay * pz - az * py, az * px - ax * pz, ax * py - ay * px
+        local ux, uy, uz = frame[3] * px - frame[1] * qx, frame[3] * py - frame[1] * qy, frame[3] * pz - frame[1] * qz
+        local ul = math.sqrt(ux * ux + uy * uy + uz * uz)
+        if ul > 1e-6 then
+          ux, uy, uz = ux / ul, uy / ul, uz / ul
+          local rx, ry, rz = ay * uz - az * uy, az * ux - ax * uz, ax * uy - ay * ux
+          local tx = ax * frame.f + rx * frame.r + ux * frame.u
+          local ty = ay * frame.f + ry * frame.r + uy * frame.u
+          local tz = az * frame.f + rz * frame.r + uz * frame.u
+          return { math.atan2(ty, tx), math.atan2(tz, math.sqrt(tx * tx + ty * ty)) }, 'weapon-local'
+        end
+      end
+    end
+  end
   return { math.atan2(fy, fx) - math.rad(off[1]),
-           math.atan2(fz, math.sqrt(fx * fx + fy * fy)) - math.rad(off[2]) }
+           math.atan2(fz, math.sqrt(fx * fx + fy * fy)) - math.rad(off[2]) }, 'world-offset'
 end
 
 -- Temporary test.6 direction evidence. Never changes the aim/calibration. At most 16 presses per load and three per weapon/context;
@@ -1046,7 +1116,7 @@ local weapon_diagnostic = (function()
     end
   end
   return {
-    update = function(c, w, muzzle, aim, u, kind)
+    update = function(c, w, muzzle, aim, u, kind, aim_mode)
       local down, t = chef.mouse_down('left') == true, now()
       local profile = down and not previous and w and count < 16 and weapon_profile(kind, u)
       local key = profile and (kind .. '/' .. profile[3])
@@ -1069,7 +1139,7 @@ local weapon_diagnostic = (function()
         vector('player-velocity', mx, my, 0)
         body_snapshot(t)
         local off = profile
-        log('weapon direction %d offset-deg %.6f %.6f profile=%s fixed=true', count, off[1], off[2], off[3])
+        log('weapon direction %d offset-deg %.6f %.6f profile=%s fixed=true direction-mode=%s', count, off[1], off[2], off[3], aim_mode or 'unavailable')
         if watch then
           local seen = setmetatable({}, { __mode = 'k' })
           for _, it in ipairs(watch.items) do seen[it.unit] = true end
@@ -1995,13 +2065,13 @@ function M.update(dt)
   read_c4(c)
   c4_icon(c)
   local h = follow_hold()
-  local weapon, muzzle, weapon_unit, weapon_kind, aim
+  local weapon, muzzle, weapon_unit, weapon_kind, aim, aim_mode
   if not (aiming or c4_aim or h) then weapon, muzzle, weapon_unit, weapon_kind = weapon_aimed(c) end
   if weapon then
-    aim = weapon_aim(c, weapon_kind, weapon_unit)
+    aim, aim_mode = weapon_aim(c, weapon_kind, weapon_unit, muzzle)
   end
   weapon_diagnostic.vehicle(c, weapon, muzzle, weapon_unit, weapon_kind)
-  weapon_diagnostic.update(c, weapon, muzzle, aim, weapon_unit, weapon_kind)
+  weapon_diagnostic.update(c, weapon, muzzle, aim, weapon_unit, weapon_kind, aim_mode)
   local nade = grenade.update(c, not (aiming or c4_aim or h or weapon))
   if aiming then
     draw_arc(c, false, release_point(c, ball, false))
