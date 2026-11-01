@@ -2029,7 +2029,7 @@ class ArcTest(unittest.TestCase):
     def test_stable_source_excludes_development_collectors_and_hooks(self):
         source = ta_build.strip_development_tracing(ta_build.built_source())
         for token in ('weapon_diagnostic', 'candidate-summary', 'GR-8 discovery armed', 'vehicle aim', 'body_snapshot',
-                      'aim_probe', 'aim quick', 'engine api'):
+                      'aim_probe', 'aim quick', 'aim box', 'aim step', 's3d'):
             self.assertNotIn(token, source)
         self.M = self.lua.execute(source, self.lua.globals().chef)
         self.weapon_in_hand('9f80d67a12a7e40f')
@@ -2252,19 +2252,42 @@ class ArcTest(unittest.TestCase):
           end
         end""")(self.fake, declared)
 
-    def test_aim_probe_reads_only_what_my_helldiver_declares_and_changes_nothing_drawn(self):
+    def test_aim_probe_reads_only_the_safe_fields_by_itself_and_changes_nothing_drawn(self):
         self.weapon_in_hand(self.GL)
         self.fake['mouse']['right'] = True
         self.frames(5)
         before = self.lines()
-        self.aim_probe_game('a5f83fa0 565f571')
+        self.aim_probe_game('a5f83fa0 98b4aaf0')
         self.frames(30)
         self.assertEqual(self.lines(), before)
         self.assertIn('aim quick t=', self.logs())
         self.assertIn('a5f83fa0=1.50000', self.logs())
-        self.assertIn('b2205a6e=undeclared', self.logs())
-        self.assertIn('0565f571=1.50000', self.logs(), 'an id declared without its leading zero')
-        self.assertNotIn('txovnjp', self.lua.eval('function(f) local k = {}; for n in pairs(f.reads) do k[#k+1] = n end; return table.concat(k, " ") end')(self.fake))
+        self.assertIn('edbf0131=undeclared', self.logs())
+        reads = self.lua.eval('function(f) local k = {}; for n in pairs(f.reads) do k[#k+1] = n end; return table.concat(k, " ") end')(self.fake)
+        self.assertNotIn('ngg1nly', reads, 'the field that ended the game in test.c1 waits for F8')
+
+    def test_aim_probe_only_makes_numbers_of_what_says_it_is_a_vector(self):
+        self.weapon_in_hand(self.GL)
+        self.fake['mouse']['right'] = True
+        self.frames(1)
+        self.aim_probe_game('a5f83fa0')
+        self.lua.eval("""function(f)
+          f.vector_calls = 0
+          f.E['Vector3.to_elements'] = function() f.vector_calls = f.vector_calls + 1; return 1, 2, 3 end
+          f.E['Script.type_name'] = function() return 'Thing' end
+          f.E['GameSession.game_object_field'] = function(gs, g, field)
+            if g == 5 then return 6 end
+            return f.an_engine_value
+          end
+          f.an_engine_value = {}
+        end""")(self.fake)
+        self.frames(60)
+        self.assertEqual(self.fake.vector_calls, 0)
+        self.assertIn('a5f83fa0=Thing', self.logs())
+        self.lua.eval("function(f) f.E['Script.type_name'] = function() return 'Vector3' end end")(self.fake)
+        self.frames(60)
+        self.assertGreater(self.fake.vector_calls, 0)
+        self.assertIn('a5f83fa0=1.0000,2.0000,3.0000', self.logs())
 
     def test_aim_probe_stays_bounded_and_samples_around_a_click(self):
         self.weapon_in_hand(self.GL)
@@ -2273,8 +2296,7 @@ class ArcTest(unittest.TestCase):
         self.aim_probe_game('a5f83fa0')
         self.frames(600)                     # 10 s aiming
         logs = self.logs()
-        self.assertLess(logs.count('aim quick t='), 110)
-        self.assertLess(logs.count('aim full t='), 25)
+        self.assertLess(logs.count('aim quick t='), 25)
         before = logs.count('aim quick t=')
         self.fake['mouse']['left'] = True
         self.frames(4)
@@ -2286,7 +2308,71 @@ class ArcTest(unittest.TestCase):
         self.lua.eval("function(f) f.E['Network.object_info'] = nil end")(self.fake)
         self.frames(30)
         self.assertGreater(len(self.lines()), 20)
-        self.assertNotIn('aim quick', self.logs())
+        self.assertNotIn('=1.50000', self.logs())
+
+    def test_aim_probe_measures_the_line_against_boxes_near_it_only(self):
+        self.weapon_in_hand(self.GL)
+        near = self.add_unit('aaaaaaaaaaaaaaaa', 20, 0, 1)
+        far = self.add_unit('bbbbbbbbbbbbbbbb', 20, 200, 1)
+        self.lua.eval("""function(f, near)
+          f.boxed = {}
+          f.E['Unit.box'] = function(u) f.boxed[u] = true; return 'pose', 'half' end
+          f.E['Math.ray_box_intersection'] = function() return 18.5 end
+          f.E['Vector3.to_elements'] = function() return 1, 2, 3 end
+          _G.Vector3 = function(x, y, z) return { x, y, z } end
+        end""")(self.fake, near)
+        self.fake['mouse']['right'] = True
+        self.frames(90)
+        self.assertIn('aim box t=', self.logs())
+        self.assertIn('18.50:aaaaaaaaaaaaaaaa:1.0,2.0,3.0', self.logs())
+        self.assertNotIn('bbbbbbbbbbbbbbbb', self.logs())
+
+    def press_f8(self):
+        self.lua.eval("function(f) f.down['f8'] = true end")(self.fake)
+        self.frames(1)
+        self.lua.eval("function(f) f.down['f8'] = false end")(self.fake)
+        self.frames(1)
+
+    def test_f8_tries_the_rest_one_at_a_time_and_passes_over_what_ended_the_game(self):
+        self.weapon_in_hand(self.GL)
+        self.fake['mouse']['right'] = True
+        self.frames(1)
+        self.aim_probe_game('98b4aaf0 565f571')
+        self.lua.eval("""function(f)
+          f.E['Unit.has_animation_state_machine'] = function() return true end
+          f.E['Unit.animation_has_constraint_target'] = function(u, name) return name == 'aim_target' end
+          f.E['Unit.animation_find_constraint_target'] = function() return 3 end
+          f.E['Unit.animation_get_constraint_target'] = function() return 7.5 end
+        end""")(self.fake)
+        self.frames(1)
+        self.press_f8()
+        logs = self.logs()
+        self.assertIn('aim step: finished', logs)
+        self.assertIn('aim step: target aim_target value=7.50000', logs)
+        self.assertIn('aim step: field 98b4aaf0=1.50000', logs)
+        self.assertIn('aim step: field 0565f571=1.50000', logs, 'an id declared without its leading zero')
+        self.frames(60)
+        self.assertIn('aim target t=', self.logs(), 'a target that read well is kept in the samples')
+        # the next launch: what was tried is not tried again (one of them may have ended the game)
+        steps = self.logs().count('aim step field')
+        self.press_f8()
+        self.assertEqual(self.logs().count('aim step field'), steps)
+
+    def test_f8_saves_each_step_before_it_is_tried(self):
+        self.weapon_in_hand(self.GL)
+        self.fake['mouse']['right'] = True
+        self.frames(1)
+        self.aim_probe_game('98b4aaf0')
+        self.lua.eval("""function(f)
+          local read = f.E['GameSession.game_object_field']
+          f.E['GameSession.game_object_field'] = function(gs, g, field)
+            if field == 'ngg1nly' then f.saved_then = f.saved.aim_probe_steps['field 98b4aaf0'] end
+            return read(gs, g, field)
+          end
+        end""")(self.fake)
+        self.frames(1)
+        self.press_f8()
+        self.assertTrue(self.fake.saved_then)
 
     def test_all_supported_weapons_use_their_asset_verified_muzzle_names_and_positions(self):
         with open(os.path.join(HERE, 'fixtures', 'weapon_muzzle_nodes.json'), encoding='utf-8') as f:
