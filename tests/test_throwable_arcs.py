@@ -2196,8 +2196,22 @@ class ArcTest(unittest.TestCase):
           f.E['Unit.animation_get_constraint_target'] = function(u, i) return f.target and 'matrix' or nil end
           f.E['Script.type_name'] = function(v) return v == 'matrix' and 'Matrix4x4' or 'Vector3' end
           f.E['Matrix4x4.translation'] = function(m) return 'at' end
-          f.E['Vector3.to_elements'] = function(v) return f.target[1], f.target[2], f.target[3] end
+          f.E['Vector3.to_elements'] = function(v)
+            if v == 'at' then return f.target[1], f.target[2], f.target[3] end
+            return f.weapon_point[1], f.weapon_point[2], f.weapon_point[3]
+          end
         end""")(self.fake, x, y, z, name)
+
+    def game_weapon_hit(self, x, y, z):
+        """my helldiver's network field: the point my weapon's aim is on"""
+        self.aim_probe_game('af97ede7 bdc1cb8a')
+        self.lua.eval("""function(f, x, y, z)
+          f.weapon_point = { x, y, z }
+          f.field_value = function() end    -- (an engine value: neither a table nor a number)
+          f.E['Script.type_name'] = f.E['Script.type_name'] or function(v) return 'Vector3' end
+          f.E['Vector3.to_elements'] = f.E['Vector3.to_elements'] or function(v)
+            return f.weapon_point[1], f.weapon_point[2], f.weapon_point[3] end
+        end""")(self.fake, x, y, z)
 
     def drawn_direction(self):
         """the arc's start and the way it goes, from its first stretch (gravity barely bends it there)"""
@@ -2205,6 +2219,128 @@ class ArcTest(unittest.TestCase):
         a, b = points[0], points[3]
         d = math.dist(a[:3], b[:3])
         return a[:3], [(b[i] - a[i]) / d for i in range(3)]
+
+    def test_the_arc_goes_from_the_muzzle_to_the_point_the_weapon_is_on(self):
+        gun = self.weapon_in_hand(self.GL)
+        self.weapon_nodes(gun, (2.25, -.2, 1.2))
+        self.game_aim(102.25, 30., 3.)         # the animation's target, somewhere else
+        self.game_weapon_hit(12.25, -1.5, 1.)  # 10 m on, as when lying prone looking aside at something near
+        self.fake['mouse']['right'] = True
+        self.frames(3)
+        start, way = self.drawn_direction()
+        self.assertLess(math.dist(start, (2.25, -.2, 1.2)), .02)
+        self.assertAlmostEqual(math.degrees(math.atan2(way[1], way[0])), math.degrees(math.atan2(-1.3, 10)), delta=.2)
+        self.assertIn('direction-mode=weapon-hit', self.fire_and_logs())
+
+    def test_recorded_rounds_fly_where_the_weapon_hit_field_says(self):
+        with open(os.path.join(HERE, 'fixtures', 'weapon_direction_testc3.json'), encoding='utf-8') as f:
+            shots = json.load(f)['shots']
+        with open(os.path.join(HERE, 'fixtures', 'aim_values_testc3.json'), encoding='utf-8') as f:
+            values = json.load(f)
+        names = {'26e40437ea275296': 'muzzle', 'f49227a0630a3f7f': 'attach_muzzle', 'e91f569c2ad8af01': 'attach_muzzle'}
+        errors = {}
+        for number in ('1', '2', '3', '4', '6', '7', '12'):      # still, with a tracked round
+            row = shots[number]
+            kind = row['header'].split('kind=')[1].split()[0]
+            self.setUp()
+            gun = self.weapon_in_hand(kind)
+            self.apply_direction_flight(gun, row)
+            muzzle = row['vectors']['muzzle-position']
+            self.weapon_nodes(gun, muzzle, muzzle, names[kind])
+            self.game_aim(*values[number]['target'])
+            self.game_weapon_hit(*values[number]['weapon_hit'])
+            self.fake['mouse']['right'] = True
+            self.frames(4)
+            track = next(s for s in row['tracks'].values() if len(s) >= 3)
+            yaw = math.degrees(math.atan2(track[-1][2] - track[0][2], track[-1][1] - track[0][1]))
+            errors[number] = abs(self.yaw_error(self.drawn_yaw(), yaw))
+            self.assertIn('weapon-hit', self.fire_and_logs())
+            self.M.shutdown()
+        self.assertLess(max(errors.values()), .25, errors)
+
+    def test_with_no_weapon_hit_field_the_arc_uses_the_animations_target(self):
+        gun = self.weapon_in_hand(self.GL)
+        self.weapon_nodes(gun, (2.25, -.2, 1.2))
+        self.game_aim(102.25, 30., 3.)
+        self.aim_probe_game('af97ede7')        # a game that no longer declares it
+        self.fake['mouse']['right'] = True
+        self.frames(3)
+        self.assertIn('direction-mode=aim-target', self.fire_and_logs())
+        reads = self.lua.eval('function(f) local k = {}; for n in pairs(f.reads) do k[#k+1] = n end; return table.concat(k, " ") end')(self.fake)
+        self.assertNotIn('rm_qp0d', reads)
+
+    def test_a_weapon_hit_that_cant_be_where_the_round_goes_is_not_used(self):
+        for point in ((2.5, -.2, 1.2), (-50., 0., 1.), (9000., 0., 1.)):   # at the muzzle, behind me, nowhere
+            with self.subTest(point=point):
+                self.setUp()
+                gun = self.weapon_in_hand(self.GL)
+                self.weapon_nodes(gun, (2.25, -.2, 1.2))
+                self.game_aim(102.25, 30., 3.)
+                self.game_weapon_hit(*point)
+                self.fake['mouse']['right'] = True
+                self.frames(3)
+                self.assertIn('direction-mode=aim-target', self.fire_and_logs())
+                self.M.shutdown()
+
+    def test_a_table_from_the_field_is_never_passed_to_the_engines_vector_functions(self):
+        gun = self.weapon_in_hand(self.GL)
+        self.game_aim(102.25, 30., 3.)
+        self.game_weapon_hit(50., 0., 1.)
+        self.lua.eval("""function(f)
+          f.field_value = {}
+          f.vector_with_table = false
+          local elements = f.E['Vector3.to_elements']
+          f.E['Vector3.to_elements'] = function(v)
+            if type(v) == 'table' then f.vector_with_table = true end
+            return elements(v)
+          end
+        end""")(self.fake)
+        self.fake['mouse']['right'] = True
+        self.frames(30)
+        self.assertFalse(self.fake.vector_with_table)
+        self.assertGreater(len(self.lines()), 20)
+
+    def test_my_helldivers_object_is_found_once_and_looked_for_only_now_and_then(self):
+        self.weapon_in_hand(self.GL)
+        self.game_aim()
+        self.game_weapon_hit(50., 0., 1.)
+        self.lua.eval("""function(f)
+          f.lists = 0
+          local owned = f.E['GameSession.objects_owned_by']
+          f.E['GameSession.objects_owned_by'] = function(...) f.lists = f.lists + 1; return owned(...) end
+        end""")(self.fake)
+        self.fake['mouse']['right'] = True
+        self.frames(300)
+        self.assertEqual(self.fake.lists, 1)
+        self.lua.execute('chef.world_id = function() return 99 end')
+        self.frames(2)
+        self.assertEqual(self.fake.lists, 2, 'again in a new world')
+        self.lua.eval("""function(f)
+          f.E['GameSession.objects_owned_by'] = function() f.lists = f.lists + 1; return { 7 } end
+          f.E['GameSession.game_object_exists'] = function() return false end
+        end""")(self.fake)
+        before = self.fake.lists
+        self.frames(300)                       # 5 s with no helldiver to be found
+        self.assertLessEqual(self.fake.lists - before, 3)
+
+    def test_a_host_with_thousands_of_objects_asks_about_a_few_each_frame(self):
+        self.weapon_in_hand(self.GL)
+        self.game_aim()
+        self.game_weapon_hit(50., 0., 1.)
+        self.lua.eval("""function(f)
+          f.asked = 0
+          local list = {}
+          for i = 1, 3000 do list[i] = 100 + i end
+          list[3001] = 5
+          f.E['GameSession.objects_owned_by'] = function() return list end
+          local exists = f.E['GameSession.game_object_exists']
+          f.E['GameSession.game_object_exists'] = function(gs, g) f.asked = f.asked + 1; return g == 5 or g == 6 end
+        end""")(self.fake)
+        self.fake['mouse']['right'] = True
+        self.frames(1)
+        self.assertLessEqual(self.fake.asked, 410)
+        self.frames(20)
+        self.assertIn('aim: my helldiver is object 6', self.logs())
 
     def test_the_arc_goes_along_the_games_aim_line_from_the_muzzle(self):
         gun = self.weapon_in_hand(self.GL)
@@ -2295,6 +2431,7 @@ class ArcTest(unittest.TestCase):
     def test_stable_build_keeps_the_aim_line(self):
         source = ta_build.strip_development_tracing(ta_build.built_source())
         self.assertIn('aim_constraint_target', source)
+        self.assertIn('rm_qp0d', source)
         self.M = self.lua.execute(source, self.lua.globals().chef)
         gun = self.weapon_in_hand(self.GL)
         self.weapon_nodes(gun, (2.25, -.2, 1.2))
@@ -2339,7 +2476,7 @@ class ArcTest(unittest.TestCase):
         self.frames(30)
         self.assertEqual(self.lines(), before)
         self.assertIn('aim quick t=', self.logs())
-        self.assertIn('weapon-hit=undeclared', self.logs())
+        self.assertIn('weapon-hit=nil', self.logs())
         self.assertNotIn('rm_qp0d', self.lua.eval('function(f) local k = {}; for n in pairs(f.reads) do k[#k+1] = n end; return table.concat(k, " ") end')(self.fake))
 
     def test_aim_probe_only_makes_numbers_of_what_says_it_is_a_vector(self):
@@ -2351,6 +2488,7 @@ class ArcTest(unittest.TestCase):
         self.lua.eval("""function(f)
           f.E['Script.type_name'] = function(v) return v == 'matrix' and 'Matrix4x4' or (v == 'at' and 'Vector3' or 'Thing') end
           f.field_value = {}
+          f.weapon_point = { 120, 30, 5 }
         end""")(self.fake)
         self.frames(30)
         self.assertIn('hit=table', self.logs(), 'the kind of value that ended the game in test.c1')
@@ -2359,7 +2497,7 @@ class ArcTest(unittest.TestCase):
         self.assertIn('hit=other', self.logs())
         self.lua.eval("function(f) f.E['Script.type_name'] = function(v) return v == 'matrix' and 'Matrix4x4' or 'Vector3' end end")(self.fake)
         self.frames(30)
-        self.assertIn('hit=120.0000,30.0000,5.0000', self.logs())
+        self.assertIn('weapon-hit=120.0000,30.0000,5.0000', self.logs())
 
     def test_aim_probe_stays_bounded_and_samples_around_a_click(self):
         self.weapon_in_hand(self.GL)
@@ -2382,7 +2520,8 @@ class ArcTest(unittest.TestCase):
         self.lua.eval("function(f) f.E['Network.object_info'] = nil end")(self.fake)
         self.frames(30)
         self.assertGreater(len(self.lines()), 20)
-        self.assertNotIn('hit=', self.logs())
+        self.assertNotIn('=120.', self.logs())
+        self.assertNotIn('hit=1', self.logs())
 
     def test_shots_while_the_camera_turns_have_their_own_records(self):
         gun = self.weapon_in_hand('f49227a0630a3f7f')

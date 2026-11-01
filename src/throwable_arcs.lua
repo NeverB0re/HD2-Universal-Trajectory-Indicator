@@ -9,7 +9,7 @@
 -- Transmog's catalog (Nexus 16633).
 local chef = ...
 local M = {}
-local VERSION = '1.1.1-test.c3'
+local VERSION = '1.1.1-test.c4'
 
 if chef.has and chef.has('own_log') then chef.own_log('throwable_arcs') end
 local function log(fmt, ...) chef.log(fmt, ...) end
@@ -451,7 +451,7 @@ local c4_obj = { goid = nil, world = nil, next = 0 }
 -- (in a function of its own: the file is near Lua 5.1's 200 locals)
 local read_field = (function()
 local FIELD_ID = { [C4_OPTIONS] = '31f86165', [C4_OWNER] = '3ccffa7f', [C4_CARRY] = '788b9753', if5_pz = '49c250a6',
-                   u4d1h9a = 'f27c68e' }
+                   u4d1h9a = 'f27c68e', rm_qp0d = 'bdc1cb8a', x4joxek = 'af97ede7' }
 local declared = {}              -- type name -> { [field id] = true }, or false when the info isn't given
 return function(gs, goid, type_name, field, tag)
   local set = declared[type_name]
@@ -1054,10 +1054,78 @@ local function weapon_profile(kind, u)
   return AIM_OFF
 end
 
--- The game's own aim: the animation's target 'aim_constraint_target', a point about 100 m down the line it aims along
--- (test.c2: 1.3 cm off the line from the muzzle through the point the weapon is on, at 87 m). It follows the game's aim
--- as the camera turns and bends toward a near wall, so nothing here is worked out per weapon, pose or turn. Found once
--- per helldiver and world, read once a frame. Nil while it can't be read.
+-- My helldiver's network object: my player's object says which it is. Looked for every LOOK s until found, BATCH of my
+-- objects a frame (as host I own thousands), and again with a new helldiver or world. Read only.
+AIMING.avatar = (function()
+  local PLAYER, AVATAR, AVATAR_OF, LOOK, BATCH = 'un6y1d', 'vvhx8ga', 'u4d1h9a', 2, 200
+  local unit, world, avatar, scan, next_look
+  local function call(name, tag, ...) return chef.call_kind(name, 'aim avatar ' .. tag, ...) end
+  local function is_a(gs, g, type_name)
+    return call('GameSession.game_object_exists', 'exists', gs, g) == true
+       and call('GameSession.game_object_is_type', 'type', gs, g, type_name) == true
+  end
+  return function(gs)
+    local w = chef.world_id()
+    if unit ~= me_unit or world ~= w then unit, world, avatar, scan, next_look = me_unit, w, nil, nil, 0 end
+    if avatar then
+      if is_a(gs, avatar, AVATAR) then return avatar end
+      avatar = nil
+    end
+    local peer = call('Network.peer_id', 'peer')
+    if not peer then return nil end
+    if not scan then
+      if now() < next_look then return nil end
+      next_look = now() + LOOK
+      local mine = call('GameSession.objects_owned_by', 'owned', gs, peer)
+      if type(mine) ~= 'table' then return nil end
+      scan = { at = 1 }
+      for _, g in pairs(mine) do scan[#scan + 1] = g end
+    end
+    for i = scan.at, math.min(scan.at + BATCH - 1, #scan) do
+      local g = scan[i]
+      if is_a(gs, g, PLAYER) and call('GameSession.game_object_owner', 'owner', gs, g) == peer then
+        local a = read_field(gs, g, PLAYER, AVATAR_OF, 'aim avatar field')
+        if type(a) == 'number' and is_a(gs, a, AVATAR) then
+          avatar, scan = a, nil
+          log('aim: my helldiver is object %s', tostring(a))
+          return a
+        end
+      end
+    end
+    scan.at = scan.at + BATCH
+    if scan.at > #scan then scan = nil end
+    return nil
+  end
+end)()
+
+-- Where the round is going: the point my weapon's aim is on, as my helldiver's network field gives it to the others (the
+-- field's id is the hash of a name we don't know; rm_qp0d hashes to it). test.c3, 12 tracked shots: at the frame a round
+-- leaves (0.04-0.05 s after the click) the line from the muzzle to this point is within 0.05-0.49 degrees of its flight,
+-- turning fast too, where the camera was 4.5 off. Nothing here is worked out per weapon, pose, distance or turn.
+AIMING.weapon_hit = (function()
+  local checked
+  return function()
+    local gs = chef.call_kind('Network.game_session', 'aim weapon hit')
+    local avatar = gs and AIMING.avatar(gs)
+    if not avatar then return nil end
+    local v = read_field(gs, avatar, 'vvhx8ga', 'rm_qp0d', 'aim weapon hit')
+    local kind = type(v)
+    if v == nil or kind == 'table' or kind == 'string' or kind == 'number' or kind == 'boolean' then return nil end
+    if checked ~= avatar then
+      if chef.call_kind('Script.type_name', 'aim weapon hit', v) ~= 'Vector3' then return nil end
+      checked = avatar
+    end
+    local x, y, z = chef.call_kind('Vector3.to_elements', 'aim weapon hit', v)
+    if type(x) == 'number' and type(y) == 'number' and type(z) == 'number' and x == x and y == y and z == z then
+      return x, y, z
+    end
+    return nil
+  end
+end)()
+
+-- If the field can't be read: the animation's target 'aim_constraint_target', about 100 m out and with the same turn lag
+-- (test.c3: as good as the field far off, up to 4.6 degrees off it within 20 m, where it doesn't run through the muzzle).
+-- Found once per helldiver and world, read once a frame. Nil while it can't be read.
 AIMING.target = (function()
   local NAME, RETRY = 'aim_constraint_target', 5
   local unit, world, index, retry, checked
@@ -1091,18 +1159,28 @@ AIMING.target = (function()
   end
 end)()
 
--- The round leaves the muzzle along that line. If it can't be read: toward the point AIMING.TARGET m under the crosshair
--- (47 tracked rounds fly from the muzzle to a point on the camera's line whatever the barrel does: 0.16 degrees off on
--- average given that point's distance, the barrel 1.89).
+-- A point a round from the muzzle could be going for: far enough to give a direction, not behind the camera's view
+-- (it can lag the camera a long way in a fast turn, and a stale value could lie anywhere).
+function AIMING.usable(c, muzzle, nearest, farthest, x, y, z)
+  if not x then return false end
+  local dx, dy, dz = x - muzzle[1], y - muzzle[2], z - muzzle[3]
+  local d = math.sqrt(dx * dx + dy * dy + dz * dz)
+  return d >= nearest and d <= farthest and (dx * c.fx + dy * c.fy + dz * c.fz) / d > 0.3
+end
+
+-- The round leaves the muzzle for that point. With neither read: for the point AIMING.TARGET m under the crosshair (47
+-- tracked rounds fly from the muzzle to a point on the camera's line whatever the barrel does).
 AIMING.TARGET = 100
 local function weapon_aim(c, kind, u, muzzle)
   if not muzzle then return nil, 'camera' end
   local d, mode = AIMING.TARGET, 'crosshair'
   local x, y, z = c.x + c.fx * d, c.y + c.fy * d, c.z + c.fz * d
-  local tx, ty, tz = AIMING.target()
-  if tx then
-    local far = (tx - muzzle[1]) ^ 2 + (ty - muzzle[2]) ^ 2 + (tz - muzzle[3]) ^ 2
-    if far > 400 and far < 40000 then x, y, z, mode = tx, ty, tz, 'aim-target' end
+  local hx, hy, hz = AIMING.weapon_hit()
+  if AIMING.usable(c, muzzle, 1.5, 2000, hx, hy, hz) then
+    x, y, z, mode = hx, hy, hz, 'weapon-hit'
+  else
+    local tx, ty, tz = AIMING.target()
+    if AIMING.usable(c, muzzle, 20, 200, tx, ty, tz) then x, y, z, mode = tx, ty, tz, 'aim-target' end
   end
   x, y, z = x - muzzle[1], y - muzzle[2], z - muzzle[3]
   return { math.atan2(y, x), math.atan2(z, math.sqrt(x * x + y * y)) }, mode
@@ -1127,72 +1205,24 @@ local weapon_diagnostic = (function()
     local units = chef.call('World.units', chef.world())
     return type(units) == 'table' and units or {}
   end
-  -- test.c3: which line does the round take? Beside the animation's target: my helldiver's network fields af97ede7 (test.c2:
-  -- on the camera's line to the cm, 89.75 m off) and bdc1cb8a (on the line to the target). Read only, while aiming: four
-  -- times a second, twenty while the camera turns, every frame around a click, and the frames before it.
+  -- test.c4: the values beside each other, to compare with the rounds: the animation's target and my helldiver's network
+  -- fields af97ede7 (on the camera's line) and bdc1cb8a (where the arc goes). Read only, while aiming: four times a second,
+  -- twenty while the camera turns, every frame around a click, and the frames before it.
   local aim_probe = (function()
-    local PLAYER, AVATAR, AVATAR_OF = 'un6y1d', 'vvhx8ga', 'u4d1h9a'
-    local FIELDS = { { 'af97ede7', 'x4joxek', 'hit' }, { 'bdc1cb8a', 'rm_qp0d', 'weapon-hit' } }
-    local state = { lines = 0, next = 0, next_look = 0, after_click = 0, ring = {} }
-    local function call(name, tag, ...) return chef.call_kind(name, 'aim probe ' .. tag, ...) end
-    local function declared()
-      local info = call('Network.object_info', 'objinfo', AVATAR)
-      if type(info) ~= 'table' or type(info.fields) ~= 'table' then return nil end
-      local set = {}
-      for _, f in ipairs(info.fields) do
-        local id = type(f) == 'table' and f.id
-        if type(id) == 'number' then id = string.format('%x', id) end
-        if type(id) == 'string' then set[(string.gsub(string.lower(id), '^0+', ''))] = true end
-      end
-      return set
-    end
-    local function find_avatar(gs)
-      if state.world ~= chef.world_id() then state.world, state.avatar, state.scan, state.ring = chef.world_id(), nil, nil, {} end
-      if state.avatar then
-        if call('GameSession.game_object_exists', 'exists', gs, state.avatar) == true
-           and call('GameSession.game_object_is_type', 'type', gs, state.avatar, AVATAR) == true then return state.avatar end
-        state.avatar = nil
-      end
-      local peer = call('Network.peer_id', 'peer')
-      if not peer then return nil end
-      if not state.scan then
-        if now() < state.next_look then return nil end
-        state.next_look = now() + 2
-        local mine = call('GameSession.objects_owned_by', 'owned', gs, peer)
-        if type(mine) ~= 'table' then return nil end
-        state.scan = { list = {}, at = 1 }
-        for _, g in pairs(mine) do state.scan.list[#state.scan.list + 1] = g end
-      end
-      local scan = state.scan
-      for i = scan.at, math.min(scan.at + 199, #scan.list) do
-        local g = scan.list[i]
-        if call('GameSession.game_object_exists', 'exists', gs, g) == true
-           and call('GameSession.game_object_is_type', 'type', gs, g, PLAYER) == true
-           and call('GameSession.game_object_owner', 'owner', gs, g) == peer then
-          local a = read_field(gs, g, PLAYER, AVATAR_OF, 'aim probe avatar')
-          if type(a) == 'number' and call('GameSession.game_object_exists', 'exists', gs, a) == true
-             and call('GameSession.game_object_is_type', 'type', gs, a, AVATAR) == true then
-            state.avatar, state.scan = a, nil
-            log('aim probe: my helldiver is object %s', tostring(a))
-            return a
-          end
-        end
-      end
-      scan.at = scan.at + 200
-      if scan.at > #scan.list then state.scan = nil end
-      return nil
-    end
+    local FIELDS = { { 'hit', 'x4joxek' }, { 'weapon-hit', 'rm_qp0d' } }
+    local state = { lines = 0, next = 0, after_click = 0, ring = {} }
     -- (only by the kind it says it is: test.c1 ended the game making numbers of a table)
     local function field_text(gs, avatar, f)
-      if not state.fields[(string.gsub(f[1], '^0+', ''))] then return 'undeclared' end
-      local v = call('GameSession.game_object_field', 'field ' .. f[1], gs, avatar, f[2])
-      if v == nil or type(v) == 'table' or type(v) == 'string' then return type(v) end
-      if call('Script.type_name', 'type name', v) ~= 'Vector3' then return 'other' end
-      local x, y, z = call('Vector3.to_elements', 'vector', v)
+      local v = read_field(gs, avatar, 'vvhx8ga', f[2], 'aim probe ' .. f[1])
+      local kind = type(v)
+      if v == nil or kind == 'table' or kind == 'string' or kind == 'number' or kind == 'boolean' then return kind end
+      if chef.call_kind('Script.type_name', 'aim probe type', v) ~= 'Vector3' then return 'other' end
+      local x, y, z = chef.call_kind('Vector3.to_elements', 'aim probe vector', v)
       if type(x) ~= 'number' then return 'other' end
       return string.format('%.4f,%.4f,%.4f', x, y, z)
     end
     return function(c, muzzle, clicked, t)
+      if state.world ~= chef.world_id() then state.world, state.ring = chef.world_id(), {} end
       local tx, ty, tz = AIMING.target()
       local target = tx and string.format('%.4f,%.4f,%.4f', tx, ty, tz) or 'none'
       local last = state.ring[#state.ring]
@@ -1210,14 +1240,11 @@ local weapon_diagnostic = (function()
       local label = clicked and 'click' or (state.after_click > 0 and 'after' or (turning and 'turning' or 'aiming'))
       state.lines, state.next = state.lines + 1, t + (turning and 0.05 or 0.25)
       if state.after_click > 0 then state.after_click = state.after_click - 1 end
-      local gs = call('Network.game_session', 'session')
-      local avatar = gs and find_avatar(gs)
+      local gs = chef.call_kind('Network.game_session', 'aim probe session')
+      local avatar = gs and AIMING.avatar(gs)
       local bits = {}
       if avatar then
-        state.fields = state.fields or declared()
-        if state.fields then
-          for _, f in ipairs(FIELDS) do bits[#bits + 1] = f[3] .. '=' .. field_text(gs, avatar, f) end
-        end
+        for _, f in ipairs(FIELDS) do bits[#bits + 1] = f[1] .. '=' .. field_text(gs, avatar, f) end
       end
       log('aim quick t=%.6f %s camera=%.4f,%.4f,%.4f forward=%.6f,%.6f,%.6f muzzle=%.4f,%.4f,%.4f target=%s %s',
           t, label, c.x, c.y, c.z, c.fx, c.fy, c.fz, muzzle[1], muzzle[2], muzzle[3], target, table.concat(bits, ' '))
