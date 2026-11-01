@@ -15,7 +15,7 @@
 1. **Calibration safety (implemented offline, runtime unverified):** validate loaded and newly learned grenade values; recover an invalid kind without discarding other valid kinds; preserve the original data before repair; cache medians outside the frame loop.
 2. **Equipment and release identification (implemented offline; focused runtime check pending):** invalidate stale weapons; distinguish hand movement from release; refresh candidates on grenade input/pose transitions. Reference research found a hand node, but no proven direct local-avatar unit mapping. Multiplayer identity and actual quick-throw detection remain validation limits.
 3. **Grenade trajectory accuracy:** align camera/feet/velocity snapshots to release time, fix the known time-reference error, use the current pose for release origin, initialize armour for grenades and verify perk factors. Reject inconsistent measurements before they become calibration. Retain learning rather than removing it without discussion.
-4. **Weapon muzzle and prone arcs (explicitly deferred by user):** ordinary weapon arcs appear slightly below the muzzle; prone origins can be far from the actual muzzle, badly misaligning the arc or suppressing it entirely (user report after test.3). Determine actual muzzle nodes/launch direction by available data, then minimal targeted shots if needed. Replace the prone suppression only when the arc is correct; check close-camera/first-person classification separately. Do not mix this work into the current grenade correction.
+4. **Weapon muzzle and prone arcs (test.5 implemented offline, runtime pending):** the user moved to this milestone on 2026-11-01 after reporting that grenade arcs fit well. Use the installed assets' actual muzzle nodes, remove height-based prone suppression, and distinguish close third-person cameras from first person. Current evidence and targeted test are in `WEAPON_MUZZLES.md`.
 5. **Coverage and distribution:** compare the supported weapon/throwable list with the current roster/data; complete missing supported behavior; reduce diagnostic I/O; package notices; document actual limitations.
 6. **Runtime acceptance:** standing/crouching/prone, movement, armour, swapping weapons/grenades, host/client, key rebinding/controllers, respawn and persistent-data recovery. Release/push after the milestone passes, not merely after unit tests.
 
@@ -90,3 +90,23 @@ Read-only analysis of all 29 recorded comparisons is documented in `TEST3_FINDIN
 Validation: 110/110 main Lua 5.1 fake-loader tests passed, including recorded Giga/Melta/Impact replay fixtures, displayed-hand versus swing-hand regression, and backup/reload/second-fit checks. Older straight-line grenade helper data was corrected to include gravity so it tests an actual ballistic flight. All 29 sparse recorded traces were separately replayed: Giga 9/9, Melta 12/13 and Impact 7/7 accepted; test.3 actually accepted 6/9, 3/13 and 7/7 respectively. This is offline replay of old observations, not a new game accuracy result.
 
 Focused next runtime check: Giga twice and Melta twice, about three seconds apart so the first fit can complete. Impact is covered by recorded replay; a live regression throw is optional when already equipped, not a required extra mission. No full roster survey is needed. Test.4 is local/unpushed and must replace, not accompany, test.3 in the mod manager.
+
+User acceptance on 2026-11-01: grenade arcs fit well; proceed to the next issue. This is user runtime confirmation
+for the tested grenades, not a claim that every catalog item and posture has been played. Preserve that result.
+
+## Step 4: 1.1.1-test.5
+
+See `WEAPON_MUZZLES.md` for the installed-build evidence, all 16 muzzle names/indices and verification boundaries.
+The prior live probe already confirmed six supported muzzle nodes. Local Filediver extraction and a static reader
+established the other supported nodes without requiring more weapon-specific experiments or any download.
+
+- Actual animated muzzle positions replace the common 0.45m start; the legacy estimate remains a logged fallback.
+- Remove explicit low-weapon-height suppression and use hand proximity for strongly lagging prone weapons.
+- Use sight-node camera proximity to refine first-person hiding. This heuristic requires live view-mode testing.
+- Resolve/cache indices per unit and world, read positions live, and retry unavailable names slowly.
+- Grenade calibration/fitting is unchanged from the user-accepted test.4; existing C4/stratagem behavior is retained.
+
+Validation: 119/119 main Lua 5.1 fake-loader tests passed, including actual-asset-derived parameterized muzzle checks
+for all 16 weapons and the prior grenade regression fixtures. ZIP source/notice checks are required before delivery.
+No real-game test.5 run, accuracy/FPS claim or remote push. Next check uses one currently equipped weapon through
+standing/crouching/prone and first-/third-person view, plus a standing/prone shot when practical.

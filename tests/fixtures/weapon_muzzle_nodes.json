@@ -1,0 +1,518 @@
+{
+  "game_build": "26251122",
+  "runtime_indices": "resolved by name; indices below are evidence only",
+  "rows": [
+    {
+      "kind": "a955c4ea6f6d4203",
+      "asset": "content/fac_helldivers/equipment/primary_weapons/assault_rifle_grenadier/assault_rifle_grenadier.unit.main",
+      "sha256": "2170ed6a8f7140c610595e9ae8bd12a8e47987f76439c6aff786277828a596c2",
+      "node": "attach_muzzle",
+      "muzzle": {
+        "index": 23,
+        "position": [
+          -2.7755574995243454e-19,
+          0.5823825001716614,
+          0.13428129255771637
+        ],
+        "forward": [
+          0.0,
+          1.0,
+          0.0
+        ]
+      },
+      "sight": {
+        "index": 18,
+        "position": [
+          -2.4805316846950333e-17,
+          -0.14181272685527802,
+          0.22915813326835632
+        ],
+        "forward": [
+          -4.7017373085679946e-32,
+          -2.832769343193999e-16,
+          1.0
+        ]
+      }
+    },
+    {
+      "kind": "f49227a0630a3f7f",
+      "asset": "content/fac_helldivers/equipment/primary_weapons/crossbow_greyfax/crossbow_greyfax.unit.main",
+      "sha256": "2a5120937d51a8754cda02fd1c0a144da0c2217a3185cfa28e246f02e3ff7e78",
+      "node": "attach_muzzle",
+      "muzzle": {
+        "index": 34,
+        "position": [
+          4.186716751064523e-08,
+          0.49170127511024475,
+          0.11096213012933731
+        ],
+        "forward": [
+          0.0,
+          1.0,
+          0.0
+        ]
+      },
+      "sight": {
+        "index": 19,
+        "position": [
+          6.88338280561553e-17,
+          -0.13490073382854462,
+          0.18128453195095062
+        ],
+        "forward": [
+          0.0,
+          1.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "kind": "006e44327bb953fe",
+      "asset": "content/fac_helldivers/equipment/primary_weapons/pump_grenade_launcher/pump_grenade_launcher.unit.main",
+      "sha256": "f66ab3f2ae5124010814b6a23b856f7db2d099121c5955490140ede9c1bcd3c7",
+      "node": "attach_muzzle",
+      "muzzle": {
+        "index": 23,
+        "position": [
+          0.0,
+          0.5498294830322266,
+          0.1455514281988144
+        ],
+        "forward": [
+          0.0,
+          1.0,
+          0.0
+        ]
+      },
+      "sight": {
+        "index": 20,
+        "position": [
+          0.0,
+          0.0,
+          0.22068169713020325
+        ],
+        "forward": [
+          0.0,
+          1.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "kind": "05d8d8c073b9d502",
+      "asset": "content/fac_helldivers/equipment/primary_weapons/pump_shotgun_plasma/pump_shotgun_plasma.unit.main",
+      "sha256": "834426b0a1acb672101dc1b4dba05edb730f00ae8b0c177159feff4170c0dc2c",
+      "node": "attach_muzzle",
+      "muzzle": {
+        "index": 31,
+        "position": [
+          1.6564734306445672e-10,
+          0.5845977663993835,
+          0.10745063424110413
+        ],
+        "forward": [
+          0.0,
+          1.0,
+          0.0
+        ]
+      },
+      "sight": {
+        "index": 25,
+        "position": [
+          -8.323579029197726e-17,
+          -0.12735877931118011,
+          0.22666749358177185
+        ],
+        "forward": [
+          0.0,
+          1.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "kind": "52e4334e6a128caf",
+      "asset": "content/fac_helldivers/equipment/sidearm_weapons/grenade_pistol/grenade_pistol.unit.main",
+      "sha256": "c63242a8ab5501f55f46ed8b02620d6b89ad951d2d4470e1bc452554d01ff8e8",
+      "node": "attach_muzzle",
+      "muzzle": {
+        "index": 21,
+        "position": [
+          0.0,
+          0.26851484179496765,
+          0.036088619381189346
+        ],
+        "forward": [
+          0.0,
+          1.0,
+          0.0
+        ]
+      },
+      "sight": {
+        "index": 13,
+        "position": [
+          9.113778050924733e-17,
+          -0.0999714806675911,
+          0.09478417038917542
+        ],
+        "forward": [
+          0.0,
+          1.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "kind": "e91f569c2ad8af01",
+      "asset": "content/fac_helldivers/equipment/sidearm_weapons/hornet_pistol/hornet_pistol.unit.main",
+      "sha256": "20b825d78fc36e766a6c827c014ea2cbf1a56fff0ca230f2594c757187be187b",
+      "node": "attach_muzzle",
+      "muzzle": {
+        "index": 28,
+        "position": [
+          0.0,
+          0.3544073700904846,
+          0.11640451848506927
+        ],
+        "forward": [
+          0.0,
+          1.0,
+          0.0
+        ]
+      },
+      "sight": {
+        "index": 17,
+        "position": [
+          9.113778050924733e-17,
+          -0.14483264088630676,
+          0.160112202167511
+        ],
+        "forward": [
+          0.0,
+          1.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "kind": "9eb160830321bfd6",
+      "asset": "content/fac_helldivers/equipment/sidearm_weapons/pistol_cricket/pistol_cricket.unit.main",
+      "sha256": "8e4628e728d4911d2b4ef3ca239c5f53cb22631db27ece0f1017416bc171ad1f",
+      "node": "attach_muzzle",
+      "muzzle": {
+        "index": 20,
+        "position": [
+          0.0,
+          0.21107713878154755,
+          0.08137477934360504
+        ],
+        "forward": [
+          0.0,
+          1.0,
+          0.0
+        ]
+      },
+      "sight": {
+        "index": 16,
+        "position": [
+          9.113778050924733e-17,
+          -0.09999999403953552,
+          0.10487471520900726
+        ],
+        "forward": [
+          0.0,
+          0.999839186668396,
+          0.017934175208210945
+        ]
+      }
+    },
+    {
+      "kind": "26e40437ea275296",
+      "asset": "content/fac_helldivers/equipment/support_weapons/air_burst_rocket_launcher/air_burst_rocket_launcher.unit.main",
+      "sha256": "26d6bc34e000547c364e2cdc1e75412586674c65d223411c92faae2ff932b72c",
+      "node": "muzzle",
+      "muzzle": {
+        "index": 35,
+        "position": [
+          0.0,
+          0.31727728247642517,
+          0.18895192444324493
+        ],
+        "forward": [
+          0.0,
+          1.0,
+          0.0
+        ]
+      },
+      "sight": {
+        "index": 25,
+        "position": [
+          -0.12266863882541656,
+          -0.10842640697956085,
+          0.21274811029434204
+        ],
+        "forward": [
+          2.465190328815662e-32,
+          1.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "kind": "88c2d09ad85a7c9f",
+      "asset": "content/fac_helldivers/equipment/support_weapons/belt_fed_grenade_launcher/belt_fed_grenade_launcher.unit.main",
+      "sha256": "d540a3ee8b848e50337ec4c3ed43332f02aecdc6c2c75fbb7f426f9e9fd838cd",
+      "node": "attach_muzzle",
+      "muzzle": {
+        "index": 26,
+        "position": [
+          0.0,
+          0.8048569560050964,
+          -0.047506410628557205
+        ],
+        "forward": [
+          0.0,
+          1.0,
+          0.0
+        ]
+      },
+      "sight": {
+        "index": 28,
+        "position": [
+          -0.04647437483072281,
+          0.3096078336238861,
+          0.16389036178588867
+        ],
+        "forward": [
+          0.0,
+          1.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "kind": "7617642765ac38c7",
+      "asset": "content/fac_helldivers/equipment/support_weapons/expendable_massive_rocket_launcher/expendable_massive_rocket_launcher.unit.main",
+      "sha256": "624ebb068f2aa755cc12bc9ffd79d4a673fdc4aa091226c6487b08da57f4dbee",
+      "node": "muzzle",
+      "muzzle": {
+        "index": 23,
+        "position": [
+          -0.03196943923830986,
+          0.3353274464607239,
+          0.12997795641422272
+        ],
+        "forward": [
+          2.465190328815662e-32,
+          1.0,
+          0.0
+        ]
+      },
+      "sight": {
+        "index": 21,
+        "position": [
+          -0.18754763901233673,
+          -0.2962586283683777,
+          0.22836312651634216
+        ],
+        "forward": [
+          2.465190328815662e-32,
+          1.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "kind": "b2b5e0d185605f9e",
+      "asset": "content/fac_helldivers/equipment/support_weapons/expendable_napalm_launcher/expendable_napalm_launcher.unit.main",
+      "sha256": "02a993af315350d603ac5999742f9de45d18abe4d8f6e96495d877ac0b4ff010",
+      "node": "muzzle",
+      "muzzle": {
+        "index": 26,
+        "position": [
+          -0.03196943923830986,
+          0.3885609805583954,
+          0.1654118001461029
+        ],
+        "forward": [
+          2.465190328815662e-32,
+          1.0,
+          0.0
+        ]
+      },
+      "sight": {
+        "index": 18,
+        "position": [
+          -0.11525988578796387,
+          -0.09999999403953552,
+          0.2533934712409973
+        ],
+        "forward": [
+          2.465190328815662e-32,
+          1.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "kind": "02eecd0b1fa49630",
+      "asset": "content/fac_helldivers/equipment/support_weapons/grenade_launcher/grenade_launcher.unit.main",
+      "sha256": "73c95352bf2fbb588c773a2e06a94251b0eea7d1434cc8935d2312177cbf5997",
+      "node": "attach_muzzle",
+      "muzzle": {
+        "index": 22,
+        "position": [
+          2.2204459996194763e-18,
+          0.43793579936027527,
+          0.096126988530159
+        ],
+        "forward": [
+          0.0,
+          1.0,
+          0.0
+        ]
+      },
+      "sight": {
+        "index": 15,
+        "position": [
+          -4.76837147544984e-09,
+          -0.1548558920621872,
+          0.25965356826782227
+        ],
+        "forward": [
+          -6.188404115836142e-32,
+          -5.053215392444312e-16,
+          1.0
+        ]
+      }
+    },
+    {
+      "kind": "fe3b29b2cfa63f9b",
+      "asset": "content/fac_helldivers/equipment/support_weapons/grenade_launcher_tactical/grenade_launcher_tactical.unit.main",
+      "sha256": "76fc0c1db877ae557cf90fb06f9226eafe745cee31dfbcd6fe9e3165c71624cb",
+      "node": "attach_muzzle",
+      "muzzle": {
+        "index": 41,
+        "position": [
+          2.162933242289e-06,
+          0.5394040942192078,
+          0.1307651251554489
+        ],
+        "forward": [
+          0.0,
+          1.0,
+          0.0
+        ]
+      },
+      "sight": {
+        "index": 44,
+        "position": [
+          8.202400378181157e-17,
+          -0.08999999612569809,
+          0.22981207072734833
+        ],
+        "forward": [
+          0.0,
+          1.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "kind": "80932fa0ed6901d3",
+      "asset": "content/fac_helldivers/equipment/support_weapons/lat_oneshot/lat_oneshot.unit.main",
+      "sha256": "12af16da905faa5ca9aebc3f58387b9334b866a1a232c5ed86981600d6ba7ae5",
+      "node": "muzzle",
+      "muzzle": {
+        "index": 17,
+        "position": [
+          -0.01524165365844965,
+          0.24829471111297607,
+          0.13332702219486237
+        ],
+        "forward": [
+          2.465190328815662e-32,
+          1.0,
+          0.0
+        ]
+      },
+      "sight": {
+        "index": 16,
+        "position": [
+          -0.10064518451690674,
+          -0.4248162508010864,
+          0.2568829357624054
+        ],
+        "forward": [
+          2.465190328815662e-32,
+          1.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "kind": "e8d5f49ad7780e54",
+      "asset": "content/fac_helldivers/equipment/support_weapons/plasma_blaster/plasma_blaster.unit.main",
+      "sha256": "31364cf6e7f07d6248701a44f23116a0c6b282fd9c841f663a707ea9e6e8eea5",
+      "node": "attach_muzzle",
+      "muzzle": {
+        "index": 24,
+        "position": [
+          0.0007503671222366393,
+          0.44096624851226807,
+          0.1839890480041504
+        ],
+        "forward": [
+          2.465190328815662e-32,
+          1.0,
+          0.0
+        ]
+      },
+      "sight": {
+        "index": 21,
+        "position": [
+          -0.09839735180139542,
+          -0.09999999403953552,
+          0.206766739487648
+        ],
+        "forward": [
+          2.465190328815662e-32,
+          1.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "kind": "9f80d67a12a7e40f",
+      "asset": "content/fac_helldivers/equipment/support_weapons/recoilless_rifle/recoilless_rifle.unit.main",
+      "sha256": "c65fe42c22199795ea3fe61b5f732e12ec5e838fd43010b73bb344798e10e17d",
+      "node": "muzzle",
+      "muzzle": {
+        "index": 26,
+        "position": [
+          -0.03196943923830986,
+          0.3885609805583954,
+          0.1654118001461029
+        ],
+        "forward": [
+          2.465190328815662e-32,
+          1.0,
+          0.0
+        ]
+      },
+      "sight": {
+        "index": 18,
+        "position": [
+          -0.1414078027009964,
+          -0.09999999403953552,
+          0.1830267310142517
+        ],
+        "forward": [
+          2.465190328815662e-32,
+          1.0,
+          0.0
+        ]
+      }
+    }
+  ]
+}

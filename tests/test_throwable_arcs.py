@@ -63,6 +63,7 @@ chef = {
   end,
   unit_node = function(u, name)
     fake.node_lookups = (fake.node_lookups or 0) + 1
+    if u.named_nodes then return u.named_nodes[name] end
     if name == 'attach_hand_r' and u.nodes and u.nodes[7] then return 7 end
   end,
   watch = function(kinds)
@@ -1637,20 +1638,134 @@ class ArcTest(unittest.TestCase):
         self.assertEqual(self.lines(), [])
         self.assertIn("weapon aimed: GL-21 Grenade Launcher (first person: not drawn)", self.logs())
 
-    def test_no_weapon_arc_lying_prone(self):
+    def test_weapon_arc_lying_prone_is_not_suppressed_by_height(self):
         gl = self.weapon_in_hand(self.GL)
         self.lua.eval("function(u) u.z = 0.4 end")(gl)     # prone: the weapon low by my feet
         self.fake["mouse"]["right"] = True
         self.frames(3)
-        self.assertEqual(self.lines(), [])
-        self.assertIn("weapon aimed lying prone: not drawn", self.logs())
+        self.assertGreater(len(self.lines()), 20)
+        self.assertNotIn("weapon aimed lying prone: not drawn", self.logs())
 
-    def test_prone_weapon_diagnostic_is_one_state_change_not_two_lines_per_frame(self):
+    def test_prone_weapon_diagnostic_is_not_repeated_each_frame(self):
         gun = self.weapon_in_hand(self.GL)
         gun.z = .4
         self.fake['mouse']['right'] = True
         self.frames(120)
-        self.assertEqual(self.logs().count('weapon aimed lying prone: not drawn'), 1)
+        self.assertEqual(self.logs().count('weapon aimed: GL-21 Grenade Launcher'), 1)
+        self.assertEqual(self.logs().count('weapon muzzle:'), 1)
+
+    def weapon_nodes(self, gun, muzzle, sight=None, name='attach_muzzle'):
+        positions = {11: self.lua.table_from(muzzle)}
+        names = {name: 11}
+        if sight:
+            positions[12] = self.lua.table_from(sight)
+            names['sight'] = 12
+        gun.nodes, gun.named_nodes = self.lua.table_from(positions), self.lua.table_from(names)
+
+    def test_weapon_arc_starts_at_the_animated_muzzle_node_instead_of_fixed_offset(self):
+        gun = self.weapon_in_hand(self.GL)
+        self.weapon_nodes(gun, (2.238, -.2, 1.296), (1.645, -.2, 1.46))
+        self.fake['mouse']['right'] = True
+        self.frames(3)
+        for got, want in zip(self.lines()[1][:3], (2.238, -.2, 1.296)):
+            self.assertAlmostEqual(got, want, delta=.0001)
+        self.assertIn('weapon muzzle: GL-21 Grenade Launcher (attach_muzzle)', self.logs())
+        gun.nodes[11][3] = 1.5
+        self.frames(1)
+        self.assertAlmostEqual(self.lines()[1][2], 1.5, delta=.0001)
+
+    def test_close_prone_third_person_camera_is_not_the_sight_camera(self):
+        gun = self.weapon_in_hand(self.GL)
+        gun.z = .3
+        self.weapon_nodes(gun, (2.238, -.2, .396), (1.645, -.2, .56))
+        self.fake.cam.x, self.fake.cam.y, self.fake.cam.z = 1.15, -.2, .6
+        self.fake['mouse']['right'] = True
+        self.frames(3)
+        self.assertGreater(len(self.lines()), 20)
+        self.assertAlmostEqual(self.lines()[1][2], .396, delta=.0001)
+
+    def test_camera_at_sight_still_hides_first_person_weapon_arc(self):
+        gun = self.weapon_in_hand(self.GL)
+        self.weapon_nodes(gun, (2.238, -.2, 1.296), (1.645, -.2, 1.46))
+        self.fake.cam.x, self.fake.cam.y, self.fake.cam.z = 1.645, -.2, 1.46
+        self.fake['mouse']['right'] = True
+        self.frames(3)
+        self.assertEqual(self.lines(), [])
+        self.assertIn('(first person: not drawn)', self.logs())
+
+    def test_prone_weapon_at_my_hand_can_be_acquired_while_aim_lags_camera(self):
+        p = math.radians(25)
+        gun = self.weapon_in_hand(self.GL, f=(math.cos(p), 0, math.sin(p)))
+        gun.z = .35
+        self.right_hand_at(gun.x, gun.y, gun.z)
+        self.weapon_nodes(gun, (2.2, -.2, .63), (1.65, -.2, .55))
+        self.fake.look(75)
+        self.fake['mouse']['right'] = True
+        self.frames(3)
+        self.assertGreater(len(self.lines()), 20)
+
+    def test_weapon_node_lookup_is_cached_while_positions_remain_live(self):
+        gun = self.weapon_in_hand(self.GL)
+        self.weapon_nodes(gun, (2.238, -.2, 1.296), (1.645, -.2, 1.46))
+        self.fake['mouse']['right'] = True
+        self.frames(3)
+        count = self.fake.node_lookups
+        self.frames(120)
+        self.assertEqual(self.fake.node_lookups, count)
+
+    def test_weapon_node_indices_are_resolved_again_when_the_world_changes(self):
+        gun = self.weapon_in_hand(self.GL)
+        self.weapon_nodes(gun, (2.238, -.2, 1.296), (1.645, -.2, 1.46))
+        self.fake['mouse']['right'] = True
+        self.frames(3)
+        gun.named_nodes['attach_muzzle'] = 13
+        gun.nodes[13] = self.lua.table_from((2.3, -.2, 1.4))
+        self.lua.execute('chef.world_id = function() return 5 end')
+        self.frames(1)
+        self.assertAlmostEqual(self.lines()[1][2], 1.4, delta=.0001)
+
+    def test_bad_muzzle_position_uses_the_existing_fallback(self):
+        gun = self.weapon_in_hand(self.GL)
+        self.weapon_nodes(gun, (10000, 0, 0))
+        self.fake['mouse']['right'] = True
+        self.frames(3)
+        self.assertAlmostEqual(self.lines()[1][0], gun.x + .45, delta=.0001)
+        self.assertIn('legacy fallback; node unavailable', self.logs())
+
+    def test_rocket_uses_its_muzzle_node_name(self):
+        gun = self.weapon_in_hand('9f80d67a12a7e40f')
+        self.weapon_nodes(gun, (2.189, -.232, 1.365), (1.7, -.3, 1.38), name='muzzle')
+        self.fake['mouse']['right'] = True
+        self.frames(3)
+        self.assertAlmostEqual(self.lines()[1][0], 2.189, delta=.0001)
+        self.assertIn('weapon muzzle: GR-8 Recoilless Rifle (muzzle)', self.logs())
+
+    def test_all_supported_weapons_use_their_asset_verified_muzzle_names_and_positions(self):
+        with open(os.path.join(HERE, 'fixtures', 'weapon_muzzle_nodes.json'), encoding='utf-8') as f:
+            rows = json.load(f)['rows']
+        self.assertEqual(len(rows), 16)
+        for row in rows:
+            with self.subTest(kind=row['kind']):
+                self.setUp()
+                gun = self.weapon_in_hand(row['kind'])
+                def world_point(local):
+                    return gun.x + local[1], gun.y - local[0], gun.z + local[2]
+                muzzle, sight = world_point(row['muzzle']['position']), world_point(row['sight']['position'])
+                self.weapon_nodes(gun, muzzle, sight, row['node'])
+                if row['kind'] == 'a955c4ea6f6d4203':
+                    self.lua.eval("""function(f)
+                      f.E['Network.game_session'] = function() return {} end
+                      f.E['Network.peer_id'] = function() return 'me' end
+                      f.E['GameSession.objects_owned_by'] = function() return {6} end
+                      f.E['GameSession.game_object_exists'] = function() return true end
+                      f.E['GameSession.game_object_is_type'] = function() return true end
+                      f.E['GameSession.game_object_field'] = function() return 8 end
+                    end""")(self.fake)
+                self.fake['mouse']['right'] = True
+                self.frames(3)
+                self.assertGreater(len(self.lines()), 20)
+                for got, want in zip(self.lines()[1][:3], muzzle):
+                    self.assertAlmostEqual(got, want, delta=.0001)
 
     def test_varying_weapon_alignment_diagnostics_are_rate_limited(self):
         gun = self.weapon_in_hand(self.GL, f=(.1, .99, 0))

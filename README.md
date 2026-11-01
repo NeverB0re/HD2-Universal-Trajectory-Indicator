@@ -69,11 +69,11 @@ Loader and enable both.
 ## Working on it
 
 Current completion work and validation boundaries: [DEVELOPMENT_STEPS.md](DEVELOPMENT_STEPS.md).
-`1.1.1-test.4` corrects grenade learning to use an airborne window and the hand/camera pose actually displayed
-before the throw animation. Prior angle/origin samples are preserved in `fit_backups` when each kind first adopts
-the new fit. The user found Giga/Melta errors and Impact convergence in test.3; analysis and offline replay results
-are in [TEST3_FINDINGS.md](TEST3_FINDINGS.md). Actual test.4 landing accuracy remains unverified. Ordinary/prone weapon
-muzzle origins are deferred. Existing stratagem/C4 behavior, native grenade profiles and automatic learning remain.
+`1.1.1-test.5` uses actual animated weapon muzzle nodes and adds prone weapon display, with sight-node proximity
+refining first-person hiding. Installed-asset evidence and the focused runtime check are in
+[WEAPON_MUZZLES.md](WEAPON_MUZZLES.md). The user reports grenade arcs fit well after test.4; its fitting and saved
+calibration are unchanged. Weapon test.5 gameplay is still unverified. Existing stratagem/C4 behavior, native
+grenade profiles and automatic learning remain.
 
 ```bash
 python -m pip install lupa
@@ -98,5 +98,7 @@ python build.py
   textures in `build.py`).
 - C4's mode icons are the game's own, cut from its HUD atlas by `tools/c4_icons.py`.
 - Unit names from filediver's resource listing (https://github.com/xypwn/filediver).
+- Weapon joint-list inspection uses Filediver's published unit layout and hash convention (BSD-3-Clause; notice
+  included). Only the small extracted node facts are included in development fixtures, not game assets.
 
 Not affiliated with Arrowhead Game Studios.

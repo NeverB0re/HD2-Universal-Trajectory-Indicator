@@ -9,7 +9,7 @@
 -- Transmog's catalog (Nexus 16633).
 local chef = ...
 local M = {}
-local VERSION = '1.1.1-test.4'
+local VERSION = '1.1.1-test.5'
 
 if chef.has and chef.has('own_log') then chef.own_log('throwable_arcs') end
 local function log(fmt, ...) chef.log(fmt, ...) end
@@ -788,7 +788,7 @@ end
 -- round's dashes were 6 m long).
 local WEAPON_K, WEAPON_LIFT, WEAPON_FROM = 4.7e-4, math.rad(0.6), { 1.3, -0.18, -0.35 }
 local WEAPON_STEP = 1 / 120      -- s per step of the flight
-local MUZZLE, SEG, SEG_FAR, MOST_POINTS = 0.45, 0.66, 0.015, 800   -- (SEG_FAR 0.01 until test.14)
+local MUZZLE, SEG, SEG_FAR, MOST_POINTS = 0.45, 0.66, 0.015, 800   -- MUZZLE is only the unavailable-node fallback now
 -- test.3: the round goes where the weapon points (the game's small aim circle), which lags the camera when turning (an
 -- EAT and a GR-8 turned left fired right of the arc). Held still, a weapon points AIM_OFF off the round's way, its own
 -- amount (0.2-2 degrees in the probe): learned while the camera turns less than STILL_TURN degrees/s, AIM_LEARN of the
@@ -808,10 +808,9 @@ local AIMING = { STILL_TURN = 8, STILL_FOR = 0.5, AIM_LEARN = 0.05, AIM_ODD = 1.
 local AIM_OFF, SIDE_CARRY = { 0, 1.5 }, 0.5
 local aim_off = {}               -- weapon kind -> { yaw, pitch } (degrees) the weapon points off the round's way
 local aim_still = { since = nil, yaw = nil, pitch = nil, t = 0 }   -- since when the camera and the weapon are still
--- (test.20: first person is told by the camera's distance to the weapon in hand, FIRST_PERSON m or less: ~0.3 in first
--- person, 1.5 or more in third; the camera's distance behind my feet, as until test.19, can be small lying prone. And a
--- weapon is taken as in hand from HELD_ALONG 0.95, 18 degrees off the camera, not 0.99: worn ones are 0.8 and less)
-local FIRST_PERSON, PRONE = 0.9, 0.6
+-- First person: a nearby camera at the weapon's sight; root distance is only a compatibility fallback. Actual hand
+-- proximity can identify a held weapon despite a lagging barrel while prone; without the hand, retain HELD_ALONG.
+local FIRST_PERSON = 0.9          -- compatibility fallback if the sight node cannot be read
 local HELD_ALONG, HELD_NEAR = 0.95, 2.5
 local held_miss = nil            -- why no weapon was found in hand, for the log
 -- weapon unit kind -> { speed m/s, gravity factor, drag * caliber^2 / mass, lifetime s or false, name }. From the
@@ -826,11 +825,11 @@ local WEAPONS = {
   ['e91f569c2ad8af01'] = { 100, 1, 0, false, 'P-34 Breacher' },   -- measured: 100 m/s, flies 7 s+ (wiki: 150, 1.7 s)
   ['f49227a0630a3f7f'] = { 100, 0.5, 2.25, false, 'CB-9 Exploding Crossbow' },           -- measured
   ['05d8d8c073b9d502'] = { 90, 3, 16, false, 'SG-8P Punisher Plasma' },
-  ['26e40437ea275296'] = { 250, 1, 0.657, 1.5, 'RL-77 Airburst Rocket Launcher' },       -- measured (bursts at 1.5 s)
-  ['9f80d67a12a7e40f'] = { 250, 1, 0.657, false, 'GR-8 Recoilless Rifle' },
-  ['80932fa0ed6901d3'] = { 200, 1, 0, false, 'EAT-17 Expendable Anti-Tank' },
-  ['b2b5e0d185605f9e'] = { 200, 1, 0, false, 'EAT-700 Expendable Napalm' },
-  ['7617642765ac38c7'] = { 50, 1, 6.4, false, 'EAT-411 Leveller' },  -- (the wiki: a large disposable launcher)
+  ['26e40437ea275296'] = { 250, 1, 0.657, 1.5, 'RL-77 Airburst Rocket Launcher', node = 'muzzle' },
+  ['9f80d67a12a7e40f'] = { 250, 1, 0.657, false, 'GR-8 Recoilless Rifle', node = 'muzzle' },
+  ['80932fa0ed6901d3'] = { 200, 1, 0, false, 'EAT-17 Expendable Anti-Tank', node = 'muzzle' },
+  ['b2b5e0d185605f9e'] = { 200, 1, 0, false, 'EAT-700 Expendable Napalm', node = 'muzzle' },
+  ['7617642765ac38c7'] = { 50, 1, 6.4, false, 'EAT-411 Leveller', node = 'muzzle' },
   -- (its unit: plasma_blaster, test.11; its round isn't a unit, so only seen by eye: test.12's arc began below the
   -- muzzle, which sits farther along and higher than the unit's grip: a guess, to be seen in test.13)
   ['e8d5f49ad7780e54'] = { 250, 2, 0.4, 0.6, 'PLAS-45 Epoch', muzzle = { 0.8, 0.12 } },
@@ -860,20 +859,31 @@ local function held_weapon(c)
     local x, y, z = chef.unit_position(u)
     if not x or (x - me[1]) ^ 2 + (y - me[2]) ^ 2 >= HELD_NEAR * HELD_NEAR then return false end
     -- Weapon roots are at the grip. Reject a slung/dropped/other player's weapon when the hand node is available.
-    return not hand or (x - hand[1]) ^ 2 + (y - hand[2]) ^ 2 + (z - hand[3]) ^ 2 <= 1
+    local d = hand and ((x - hand[1]) ^ 2 + (y - hand[2]) ^ 2 + (z - hand[3]) ^ 2)
+    return not hand or d <= 1, d
   end
-  if held and chef.unit_alive(held.unit) and near(held.unit) then
-    local fx, fy, fz = chef.unit_rotation(held.unit)
-    if type(fx) == 'number' and fx * c.fx + fy * c.fy + fz * c.fz >= AIMING.HELD_KEEP then return held.kind, held.unit end
+  if held and chef.unit_alive(held.unit) then
+    local nearby, hand_d = near(held.unit)
+    if nearby then
+      local fx, fy, fz = chef.unit_rotation(held.unit)
+      local a = type(fx) == 'number' and fx * c.fx + fy * c.fy + fz * c.fz
+      if a and ((hand_d and hand_d <= 0.35 * 0.35 and a >= 0)
+                or (not hand and a >= AIMING.HELD_KEEP)) then return held.kind, held.unit end
+    end
   end
   held, held_miss = nil, nil
   local best, best_a
   for _, it in ipairs(weapon_watch.items) do
     if chef.unit_alive(it.unit) then
-      if near(it.unit) then
+      local nearby, hand_d = near(it.unit)
+      if nearby then
         local fx, fy, fz = chef.unit_rotation(it.unit)
         local a = type(fx) == 'number' and fx * c.fx + fy * c.fy + fz * c.fz
-        if a and (not best_a or a > best_a) then best, best_a = it, a end
+        -- A prone weapon can point off the camera while tracking the game's aim circle. A root actually at my
+        -- hand is stronger evidence than camera alignment; prefer the nearest such root to a slung weapon.
+        local strong = hand_d and hand_d <= 0.35 * 0.35 and a and a >= 0
+        local score = strong and (2 - hand_d) or a
+        if score and (not best_a or score > best_a) then best, best_a = it, score end
       end
     end
   end
@@ -885,9 +895,44 @@ local function held_weapon(c)
   return nil
 end
 
--- the muzzle of a held weapon: { x, y, z }, or nil. A row's muzzle = { ahead, up } (m) where MUZZLE isn't it
+-- All 16 supported units have the named muzzle and a sight node in the installed build's joint list. Resolve names
+-- through the loader, never hardcode asset indices. Cache per unit/world; a missing node retries after five seconds.
+local weapon_nodes = (function()
+  local cache, world = setmetatable({}, { __mode = 'k' }), nil
+  return function(u, w)
+    local wid, t = chef.world_id(), now()
+    if wid ~= world then cache, world = setmetatable({}, { __mode = 'k' }), wid end
+    local row = cache[u]
+    if not row then row = { next = 0 }; cache[u] = row end
+    if chef.unit_node and t >= row.next and (not row.muzzle or not row.sight) then
+      row.next = t + GRIP_RETRY
+      row.muzzle = row.muzzle or chef.unit_node(u, w.node or 'attach_muzzle')
+      row.sight = row.sight or chef.unit_node(u, 'sight')
+    end
+    return row
+  end
+end)()
+
+-- Actual animated muzzle, in any pose. Legacy offsets remain only for unavailable/invalid node reads.
 local function muzzle_of(u, w)
   local x, y, z = chef.unit_position(u)
+  if not x then return nil end
+  local nodes = weapon_nodes(u, w)
+  if nodes.muzzle then
+    local mx, my, mz = chef.unit_position(u, nodes.muzzle)
+    if mx and mx == mx and my == my and mz == mz
+       and (mx - x) ^ 2 + (my - y) ^ 2 + (mz - z) ^ 2 <= 9 then
+      if nodes.said ~= 'node' then
+        nodes.said = 'node'
+        log('weapon muzzle: %s (%s)', w[5], w.node or 'attach_muzzle')
+      end
+      return { mx, my, mz }
+    end
+  end
+  if nodes.said ~= 'fallback' then
+    nodes.said = 'fallback'
+    log('weapon muzzle: %s (legacy fallback; node unavailable)', w[5])
+  end
   local fx, fy, fz = chef.unit_rotation(u)
   if not (x and type(fx) == 'number') then return nil end
   local ahead, up = MUZZLE, 0
@@ -895,10 +940,21 @@ local function muzzle_of(u, w)
   return { x + fx * ahead, y + fy * ahead, z + fz * ahead + up }
 end
 
-local function first_person(c, u)
+local function first_person(c, u, w)
   local x, y, z = chef.unit_position(u)
   if not x then return false end
-  return (x - c.x) ^ 2 + (y - c.y) ^ 2 + (z - c.z) ^ 2 < FIRST_PERSON * FIRST_PERSON
+  local near = (x - c.x) ^ 2 + (y - c.y) ^ 2 + (z - c.z) ^ 2 < FIRST_PERSON * FIRST_PERSON
+  if not near then return false end
+  local nodes = weapon_nodes(u, w)
+  if nodes.sight then
+    local sx, sy, sz = chef.unit_position(u, nodes.sight)
+    if sx and (sx - x) ^ 2 + (sy - y) ^ 2 + (sz - z) ^ 2 <= 9 then
+      -- A close prone third-person camera need not be at the weapon's eye/sight point. This geometric threshold
+      -- still needs the targeted live first-/third-person check; fallback preserves older-loader behavior.
+      return (sx - c.x) ^ 2 + (sy - c.y) ^ 2 + (sz - c.z) ^ 2 < 0.35 * 0.35
+    end
+  end
+  return near
 end
 
 -- the round as it is fired: where it starts and its velocity (mx, my: my velocity on the ground; aim: { yaw, pitch }
@@ -1592,21 +1648,15 @@ local function weapon_aimed(c)
   end
   local kind, u = held_weapon(c)
   if kind and WEAPONS[kind].ub and not underbarrel_on() then kind = nil end     -- (its rifle: no arc)
-  local fp = kind and first_person(c, u)
-  local wz
-  if kind and not fp then local _, _, z = chef.unit_position(u); wz = z end
-  local prone = wz and me and wz - me[3] < PRONE
+  local fp = kind and first_person(c, u, WEAPONS[kind])
   local said = kind and (WEAPONS[kind][5] .. (fp and ' (first person: not drawn)' or ''))
                or ('none' .. (held_miss and ' (' .. held_miss .. ')' or ''))
-  if prone then said = 'prone' end
   if said ~= said_weapon and (kind or held_miss == 'throwable hand pose' or now() >= weapon_log_at) then
     said_weapon = said
     weapon_log_at = now() + 0.5
-    if prone then log('weapon aimed lying prone: not drawn') else log('weapon aimed: %s', said) end
+    log('weapon aimed: %s', said)
   end
-  if not kind or fp or prone then return nil end
-  -- lying prone (the weapon in hand less than PRONE m above my feet): not drawn; its aim and muzzle aren't measured
-  -- prone (test.20: the arc began off the muzzle and missed, and went away aiming up)
+  if not kind or fp then return nil end
   return WEAPONS[kind], muzzle_of(u, WEAPONS[kind]), u, kind
 end
 
