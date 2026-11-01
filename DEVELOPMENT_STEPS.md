@@ -179,3 +179,14 @@ Apply fixed local-frame launch correction for prone GL-21/GR-8; keep world gravi
 Classify profiled prone poses by cached hips/chest geometry, retaining height fallback when unavailable.
 Saved GL-21 twist records improve horizontally and in full initial direction, but residual error remains.
 145 tests pass; test.12 runtime pending and GR-8 still lacks tracked projectile evidence. See WEAPON_MUZZLES.md.
+
+
+## Step 4 FRV/data follow-up: 1.1.1-test.13
+
+User distinguishes satisfactory tank passenger behavior from FRV upper-body twist and questions the unsupported
+GR-8 +0.15deg proposal. Remove that proposal before packaging; verify test.12 GR-8 direction remains identical.
+Apply a separate fixed local-frame FRV GL-21 candidate from its three recorded flights; retain all other FRV
+weapon/tank calculations. Generate shared bind geometry with optional inspector Lua output. 149 tests pass.
+User permits development projectile acquisition, but current native research/build code does not match and the
+running-game module read is denied. No flight captured; no more GR-8 shooting requested until access is solved.
+Evidence: WEAPON_MUZZLES.md and NATIVE_PROJECTILE_RESEARCH.md. No remote push.

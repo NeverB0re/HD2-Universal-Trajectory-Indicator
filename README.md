@@ -69,12 +69,12 @@ Loader and enable both.
 ## Working on it
 
 Current completion work and validation boundaries: [DEVELOPMENT_STEPS.md](DEVELOPMENT_STEPS.md).
-`1.1.1-test.12` applies fixed weapon-frame correction to prone GL-21/GR-8, so the correction follows weapon roll
-while aiming sideways. Cached hips/chest geometry improves prone classification when the gun rises. It uses the
-existing actual muzzle and static locator metadata; no learning or fixed-distance convergence is introduced.
-Standing/crouched offsets, vehicle context, physics and other weapons retain their existing calculation.
-All 145 offline tests pass; saved twisted-prone flights improve but residual error remains and test.12 gameplay
-is unverified. See [WEAPON_MUZZLES.md](WEAPON_MUZZLES.md) for evidence, bounds and the focused check. Grenade fitting and saved
+`1.1.1-test.13` trials a separate fixed weapon-frame correction for GL-21 in FRVs using three recorded flights.
+Tank aiming, other FRV weapons and test.12 prone behavior are retained. The unsupported +0.15deg GR-8 proposal
+was removed before packaging; no GR-8 vertical trim is applied. Shared bind geometry is generated at build time.
+All 149 offline tests pass; FRV gameplay remains unverified. See [WEAPON_MUZZLES.md](WEAPON_MUZZLES.md) for evidence
+and [NATIVE_PROJECTILE_RESEARCH.md](NATIVE_PROJECTILE_RESEARCH.md) for the currently blocked GR-8 measurement path.
+No native collector is included. Grenade fitting and saved
 calibration are unchanged from the user-accepted test.4. Existing stratagem/C4 behavior, native
 grenade profiles and automatic learning remain.
 

@@ -1,4 +1,4 @@
-# Weapon muzzle and prone work: test.5 through test.12
+# Weapon muzzle and prone work: test.5 through test.13
 
 2026-11-01. Based on local installed Steam build 26251122. The user reports grenade arcs fit well after test.4;
 this milestone changes weapon selection/origin/view classification only. Grenade fitting and saved calibration are unchanged.
@@ -401,3 +401,44 @@ Next check: GL-21 and GR-8, prone on ordinary ground, aim forward/left/right wit
 than necessary; one single shot in each direction. Six shots fit the existing three-per-weapon/profile budget.
 Report remaining horizontal AND vertical error. No new terrain search or standing/crouched survey is requested.
 No test.12 runtime accuracy claim or remote push.
+
+
+## Test.13: FRV-only GL-21 frame trial; no GR-8 vertical trim
+
+User reports small GR-8 prone vertical disagreement after test.12, while prone horizontal alignment appears good.
+Tank passenger aiming appears accurate and rotates the whole body, whereas FRV leaning-out aiming twists the
+upper body with fixed lower body; side/downward aim increases error. Preserve tank behavior. These are user
+observations, not measurements of a cause common to every weapon.
+
+A proposed +0.15deg GR-8 trim was an arbitrary trial value, not calculated from flight data. The user challenged
+it, and it was removed before packaging. All GR-8 prone launch directions are unchanged from test.12, verified
+against all three test.12 GR-8 snapshots in `weapon_direction_test12.json` (both pitch and yaw). There is no hidden
+camera fit, re-learning or vertical trim. Camera disagreement alone is not projectile disagreement.
+
+For FRV GL-21 only, reconstruct the same rigid weapon frame used prone, but use a separate FRV correction from
+actual recorded test.9 shots 9-11. Their fitted local right/up pairs are approximately (-0.261,-0.998),
+(+0.528,-0.904), (-0.326,-1.373) degrees; means approximately (-0.020,-1.092), rounded to 0/-1.1 degrees.
+This preserves a measured-data origin for the values; only three old samples exist, not independent validation.
+Full initial direction replay errors improve 0.624->0.281, 0.721->0.563, 0.471->0.425 degrees. Only GL-21 in a
+regular/flamer/supply FRV selects this candidate. Tanks and other FRV weapons retain the prior world correction.
+Very side/downward FRV accuracy still requires observation; synthetic roll/vertical tests prove finite geometry,
+not actual hit accuracy. The FRV driver gate remains unchanged.
+
+`src/weapon_frames.lua` contains named muzzle bind coordinates for all sixteen supported assets, generated from
+the already verified local unit fixture. Build-time embedding avoids runtime file reads and new dependencies.
+The prone frame's geometry now comes from this shared table; the correction coefficients are unchanged.
+`tools/inspect_weapon_nodes.py --lua-output ...` can regenerate it alongside the evidence fixture after an asset
+update, reducing manual coordinate maintenance. No game extraction/download was repeated for this change.
+
+All 149 Lua 5.1 tests pass, including saved GR-8 direction preservation, both tank variants' unchanged recorded
+launch, actual FRV GL-21 replay improvement, side-roll/straight-down finite geometry, all-sixteen named muzzle
+coverage and unchanged unmeasured weapon modes. No FPS or in-game accuracy claim is made.
+
+The user also authorized a development-only GR-8 projectile collector if necessary. Public native pool research
+was found, but the build/layout and access checks fail for this installation. See NATIVE_PROJECTILE_RESEARCH.md
+for exact evidence. No usable native collector or GR-8 flight acquisition is claimed, no package downloaded or
+installed, and no GR-8 vertical value changed. No collector is in the ZIP. Do not request more GR-8 shots without
+first establishing a functioning measurement path.
+
+Focused optional test.13 check: GL-21 only, stationary FRV passenger, one forward and one side/downward shot.
+No tank or prone GR-8 repeat is needed for code intentionally unchanged in this build. Runtime pending; no push.

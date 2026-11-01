@@ -1901,6 +1901,93 @@ class ArcTest(unittest.TestCase):
         self.frames(1)
         self.assertAlmostEqual(self.drawn_yaw(), .13, delta=.06)
 
+    def recorded_launch_velocity(self):
+        line = next(line for line in self.logs().splitlines() if ' predicted-velocity ' in line)
+        return tuple(map(float, line.split(' predicted-velocity ')[1].split()))
+
+    def test_gr8_prone_launch_retains_test12_direction(self):
+        with open(os.path.join(HERE, 'fixtures', 'weapon_direction_test12.json'), encoding='utf-8') as f:
+            rows = json.load(f)['shots']
+        for n in ('1', '2', '3'):
+            with self.subTest(shot=n):
+                self.setUp()
+                gun = self.weapon_in_hand('9f80d67a12a7e40f')
+                self.frames(1)  # identify the player before applying the captured distant camera
+                row = rows[n]
+                self.apply_prone_body_flight(gun, row)
+                # A sight node is available in game; avoid the missing-sight root-distance fallback here.
+                self.weapon_nodes(gun, row['vectors']['muzzle-position'],
+                                  (gun.x, gun.y, gun.z + .3), name='muzzle')
+                self.fake['mouse']['right'] = self.fake['mouse']['left'] = True
+                self.frames(1)
+                actual = self.recorded_launch_velocity()
+                old = row['vectors']['predicted-velocity']
+                pitch = lambda v: math.degrees(math.atan2(v[2], math.hypot(v[0], v[1])))
+                yaw = lambda v: math.degrees(math.atan2(v[1], v[0]))
+                self.assertAlmostEqual(pitch(actual) - pitch(old), 0, delta=.001)
+                self.assertAlmostEqual(self.yaw_error(yaw(actual), yaw(old)), 0, delta=.001)
+
+    def test_tank_passenger_retains_recorded_world_correction(self):
+        with open(os.path.join(HERE, 'fixtures', 'weapon_direction_test12.json'), encoding='utf-8') as f:
+            row = json.load(f)['shots']['4']
+        for kind in ('16474112801385b6', 'b0c9faf4af8903f9'):
+            with self.subTest(vehicle=kind):
+                self.setUp()
+                gun = self.weapon_in_hand('9f80d67a12a7e40f')
+                self.apply_prone_body_flight(gun, row)
+                car = self.vehicle_at(self.fake.me.x + .4, self.fake.me.y + .3, self.fake.me.z - 2.2)
+                car.kind = kind
+                self.fake['mouse']['right'] = self.fake['mouse']['left'] = True
+                self.frames(1)
+                actual = self.recorded_launch_velocity()
+                old = row['vectors']['predicted-velocity']
+                for got, want in zip(actual, old):
+                    self.assertAlmostEqual(got, want, delta=.001)
+                self.assertIn('direction-mode=world-offset', self.logs())
+
+    def test_frv_local_model_improves_saved_gl21_full_direction(self):
+        spec = importlib.util.spec_from_file_location('prone_analysis', os.path.join(HERE, '..', 'tools', 'analyze_prone_frame.py'))
+        analysis = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(analysis)
+        with open(os.path.join(HERE, 'fixtures', 'weapon_direction_test9.json'), encoding='utf-8') as f:
+            rows = json.load(f)['shots']
+        angular = lambda a, b: math.degrees(math.acos(max(-1, min(1, analysis.dot(a, b)))))
+        for n in ('9', '10', '11'):
+            with self.subTest(shot=n):
+                self.setUp()
+                gun = self.weapon_in_hand(self.GL)
+                self.frames(1)  # retain player identity for the distant vehicle camera
+                row = rows[n]
+                self.apply_direction_flight(gun, row)
+                self.vehicle_at(self.fake.me.x + .4, self.fake.me.y + .3, self.fake.me.z - .6)
+                self.fake['mouse']['right'] = self.fake['mouse']['left'] = True
+                self.frames(1)
+                predicted = analysis.unit(self.recorded_launch_velocity())
+                observed = analysis.observed_gl(row)
+                previous = analysis.unit(row['vectors']['predicted-velocity'])
+                self.assertLess(angular(predicted, observed), angular(previous, observed))
+                self.assertIn('direction-mode=FRV-local', self.logs())
+
+    def test_frv_rolled_and_downward_aim_are_finite(self):
+        for downward in (False, True):
+            with self.subTest(downward=downward):
+                self.setUp()
+                gun = self.weapon_in_hand(self.GL)
+                if downward:
+                    gun.f = self.lua.table_from((0, 0, -1))
+                    self.fake.look(-90)
+                    muzzle = (gun.x + .096126989, gun.y, gun.z - .437935799)
+                else:
+                    muzzle = (gun.x + .437935799, gun.y - .096126989, gun.z)
+                self.weapon_nodes(gun, muzzle)
+                self.vehicle_at(1.9, .3, -.6)
+                self.fake['mouse']['right'] = self.fake['mouse']['left'] = True
+                self.frames(1)
+                self.assertIn('direction-mode=FRV-local', self.logs())
+                self.assertTrue(all(math.isfinite(v) for v in self.recorded_launch_velocity()))
+                if not downward:
+                    self.assertAlmostEqual(self.drawn_yaw(), 1.1, delta=.07)
+
     def test_prone_soldier_on_ground_beside_frv_is_preserved(self):
         gun = self.weapon_in_hand(self.GL)
         gun.z = .3
@@ -2055,7 +2142,7 @@ class ArcTest(unittest.TestCase):
         self.fake['mouse']['left'] = True
         self.frames(25)
         self.assertEqual(self.logs().count(' shot t='), 4)
-        self.assertIn('profile=vehicle/unmeasured fixed=true', self.logs())
+        self.assertIn('profile=vehicle/FRV-local fixed=true', self.logs())
 
     def test_direction_recording_is_globally_bounded_across_profiles(self):
         gun = self.weapon_in_hand(self.GL)
@@ -2217,6 +2304,11 @@ class ArcTest(unittest.TestCase):
                 self.assertGreater(len(self.lines()), 20)
                 for got, want in zip(self.lines()[1][:3], muzzle):
                     self.assertAlmostEqual(got, want, delta=.0001)
+                self.vehicle_at(1.9, .3, -.6)
+                self.fake['mouse']['left'] = True
+                self.frames(1)
+                expected_mode = 'FRV-local' if row['kind'] == self.GL else 'world-offset'
+                self.assertIn('direction-mode=' + expected_mode, self.logs(), 'unmeasured FRV weapon corrections remain unchanged')
 
     def test_varying_weapon_alignment_diagnostics_are_rate_limited(self):
         gun = self.weapon_in_hand(self.GL, f=(.1, .99, 0))

@@ -9,7 +9,7 @@
 -- Transmog's catalog (Nexus 16633).
 local chef = ...
 local M = {}
-local VERSION = '1.1.1-test.12'
+local VERSION = '1.1.1-test.13'
 
 if chef.has and chef.has('own_log') then chef.own_log('throwable_arcs') end
 local function log(fmt, ...) chef.log(fmt, ...) end
@@ -793,9 +793,11 @@ local MUZZLE, SEG, SEG_FAR, MOST_POINTS = 0.45, 0.66, 0.015, 800   -- MUZZLE is 
 -- not change the next on-foot shot. Root direction stays live so aim lag and genuine barrel deflection remain.
 -- GL-21 profile values are offline medians of recorded flights; see tools/fit_weapon_aim.py and WEAPON_MUZZLES.md.
 local AIMING = { HELD_KEEP = 0.8 }
+AIMING.frames = "@WEAPON_FRAMES@"
 local AIM_OFF, SIDE_CARRY = { 0, 1.5, 'on-foot/unmeasured' }, 0.5
 local AIM_PROFILES = {
   vehicle = { 0, 1.5, 'vehicle/unmeasured' },
+  frv = { 0, 1.5, 'vehicle/FRV-local' },
   -- test.9 GR-8 prone snapshot: root-camera yaw -1.35deg at height 0.513m. No tracked round;
   -- this yaw and the 0.65m band are explicit estimates, not GL-21 data or a fitted GR-8 trajectory.
   ['9f80d67a12a7e40f'] = {
@@ -813,11 +815,21 @@ local AIM_PROFILES = {
 }
 -- Precompute local direction weights once, never fit or change them when equipping/aiming.
 do
-  for _, profile in pairs(AIM_PROFILES) do
+  for kind, profile in pairs(AIM_PROFILES) do
     local f = profile.frame
     if f then
+      local bind = AIMING.frames[kind]
+      if bind then f[1], f[2], f[3] = bind[1], bind[2], bind[3] end
       local yaw, pitch = math.rad(f[4]), math.rad(f[5])
       f.r, f.f, f.u = math.sin(yaw) * math.cos(pitch), math.cos(yaw) * math.cos(pitch), math.sin(pitch)
+    end
+  end
+  for kind, f in pairs(AIMING.frames) do
+    -- GL-21 FRV samples: mean local pitch rounds to -1.1deg, mean yaw to zero.
+    -- Other bind rows are geometry only and do not activate an unmeasured FRV correction.
+    if kind == '02eecd0b1fa49630' then
+      local pitch = math.rad(-1.1)
+      f.r, f.f, f.u = 0, math.cos(pitch), math.sin(pitch)
     end
   end
 end
@@ -1019,8 +1031,16 @@ end)()
 -- Torso geometry has priority over weapon height; missing torso data uses legacy height bands.
 -- No native stance enum is assumed. Vehicle always has its own fallback.
 local function weapon_profile(kind, u)
-  local seated, _, _, up = in_vehicle()
-  if seated and up and up >= 0.35 then return AIM_PROFILES.vehicle, false end
+  local seated, vehicle_kind, _, up = in_vehicle()
+  if seated and up and up >= 0.35 then
+    if vehicle_kind == 'cc21c7ffd3ebefb9' or vehicle_kind == '2d85bfe3d8717fe5'
+       or vehicle_kind == '9b2140378640432e' then
+      local frame = AIMING.frames[kind]
+      -- Only GL-21 currently has actual FRV flight samples. Keep unmeasured weapons on their old path.
+      if frame and kind == '02eecd0b1fa49630' then return AIM_PROFILES.frv, false, frame end
+    end
+    return AIM_PROFILES.vehicle, false
+  end
   local profiles = AIM_PROFILES[kind]
   if profiles and me then
     local _, _, z = chef.unit_position(u)
@@ -1037,9 +1057,10 @@ end
 local function weapon_aim(c, kind, u, muzzle)
   local fx, fy, fz = chef.unit_rotation(u)
   if type(fx) ~= 'number' then return nil end
-  local off, prone = weapon_profile(kind, u)
-  local frame = AIM_PROFILES[kind] and AIM_PROFILES[kind].frame
-  if prone and frame and muzzle then
+  local off, prone, frv_frame = weapon_profile(kind, u)
+  local profile = AIM_PROFILES[kind]
+  local frame = frv_frame or (profile and profile.frame)
+  if (prone or frv_frame) and frame and muzzle then
     local x, y, z = chef.unit_position(u)
     local fl = math.sqrt(fx * fx + fy * fy + fz * fz)
     if x and fl > 0.9 and fl < 1.1 then
@@ -1061,7 +1082,7 @@ local function weapon_aim(c, kind, u, muzzle)
           local tx = ax * frame.f + rx * frame.r + ux * frame.u
           local ty = ay * frame.f + ry * frame.r + uy * frame.u
           local tz = az * frame.f + rz * frame.r + uz * frame.u
-          return { math.atan2(ty, tx), math.atan2(tz, math.sqrt(tx * tx + ty * ty)) }, 'weapon-local'
+          return { math.atan2(ty, tx), math.atan2(tz, math.sqrt(tx * tx + ty * ty)) }, frv_frame and 'FRV-local' or 'weapon-local'
         end
       end
     end
