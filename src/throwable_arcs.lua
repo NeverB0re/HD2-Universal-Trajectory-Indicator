@@ -9,7 +9,7 @@
 -- Transmog's catalog (Nexus 16633).
 local chef = ...
 local M = {}
-local VERSION = '1.1.1-test.10'
+local VERSION = '1.1.1-test.11'
 
 if chef.has and chef.has('own_log') then chef.own_log('throwable_arcs') end
 local function log(fmt, ...) chef.log(fmt, ...) end
@@ -1017,6 +1017,34 @@ local weapon_diagnostic = (function()
       log('weapon direction %d %s %.6f %.6f %.6f', count, label, x, y, z)
     end
   end
+  -- test.11: forward-only weapon rotation cannot reveal torso roll. Observe named avatar aim/body nodes
+  -- only at the already bounded shot snapshots. No per-frame reads, world scan, calibration or aim changes.
+  local body = {}
+  local body_names = { 'weapon_aim', 'aim_weapon', 'boss_aim', 'hips', 'chest', 'l_clavicle', 'r_clavicle' }
+  local function body_snapshot(t)
+    if not (me_unit and chef.unit_alive(me_unit) and chef.unit_node) then return end
+    local world = chef.world_id()
+    if body.unit ~= me_unit or body.world ~= world then body = { unit = me_unit, world = world, next = 0 } end
+    if t >= body.next then
+      body.next = t + GRIP_RETRY
+      for _, name in ipairs(body_names) do
+        if not body[name] then
+          local node = chef.unit_node(me_unit, name)
+          if type(node) == 'number' then body[name] = node end
+        end
+      end
+    end
+    vector('avatar-root-forward', chef.unit_rotation(me_unit))
+    for _, name in ipairs(body_names) do
+      local node = body[name]
+      if node then
+        vector('avatar-' .. name .. '-position', chef.unit_position(me_unit, node))
+        vector('avatar-' .. name .. '-forward', chef.unit_rotation(me_unit, node))
+      else
+        log('weapon direction %d avatar-%s unavailable', count, name)
+      end
+    end
+  end
   return {
     update = function(c, w, muzzle, aim, u, kind)
       local down, t = chef.mouse_down('left') == true, now()
@@ -1039,6 +1067,7 @@ local weapon_diagnostic = (function()
         local x, y, z, vx, vy, vz = launch(c, w, mx, my, aim, muzzle)
         vector('predicted-velocity', vx, vy, vz)
         vector('player-velocity', mx, my, 0)
+        body_snapshot(t)
         local off = profile
         log('weapon direction %d offset-deg %.6f %.6f profile=%s fixed=true', count, off[1], off[2], off[3])
         if watch then

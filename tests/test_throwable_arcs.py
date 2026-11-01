@@ -2015,6 +2015,28 @@ class ArcTest(unittest.TestCase):
         self.assertEqual(self.logs().count(' shot t='), 16)
         self.assertFalse(self.direction_watch().active)
 
+    def test_body_aim_nodes_are_recorded_only_on_bounded_shots(self):
+        gun = self.weapon_in_hand(self.GL)
+        self.fake.me.named_nodes = self.lua.table_from({'weapon_aim': 21, 'aim_weapon': 22, 'l_clavicle': 23, 'r_clavicle': 24})
+        self.fake.me.nodes = self.lua.table_from({21: self.lua.table_from((1.5, 0, .4)),
+            22: self.lua.table_from((1.6, 0, .4)), 23: self.lua.table_from((1.5, -.2, .5)),
+            24: self.lua.table_from((1.5, .2, .6))})
+        self.fake.me.node_f = self.lua.table_from({21: self.lua.table_from((.99, .1, 0)),
+                                                22: self.lua.table_from((1, 0, 0))})
+        self.fake['mouse']['right'] = True
+        self.frames(60)
+        self.assertNotIn('avatar-weapon_aim', self.logs())
+        before = self.lines()
+        self.fake['mouse']['left'] = True
+        self.frames(1)
+        self.assertEqual(self.lines(), before)
+        self.assertIn('avatar-weapon_aim-forward 0.990000 0.100000 0.000000', self.logs())
+        self.assertIn('avatar-r_clavicle-position 1.500000 0.200000 0.600000', self.logs())
+        self.assertIn('avatar-chest unavailable', self.logs())
+        entries = self.logs().count('avatar-weapon_aim-forward')
+        self.frames(60)
+        self.assertEqual(self.logs().count('avatar-weapon_aim-forward'), entries)
+
     def test_weapon_direction_probe_cancels_on_world_change(self):
         self.weapon_in_hand(self.GL)
         self.fake['mouse']['right'] = True

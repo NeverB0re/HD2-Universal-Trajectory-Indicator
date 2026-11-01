@@ -160,3 +160,12 @@ arcs. Add the omitted supply-FRV kind to the same raised-weapon guard. Add an ex
 fixed yaw correction from its one captured root/camera snapshot, keeping higher-root offsets and all GL-21 data.
 No GR-8 projectile calibration is claimed; threshold/heading need runtime confirmation. Add vehicle kind/up-height
 to bounded diagnostics. All 140 tests pass; no remote push. See WEAPON_MUZZLES.md for evidence and limitations.
+
+
+## Step 4 terrain follow-up: 1.1.1-test.11
+
+User confirms GR-8 prone test.10 fit, but terrain-induced body inclination changes alignment. The current loader
+wrapper exposes forward and yaw, not roll, and existing logs lack a body frame. Use cached avatar aim/torso node
+names already present in extracted metadata to record bounded shot-time vectors/positions. This is necessary
+slope evidence, not a new calibration or a change to the accepted flat-ground aim. All 141 tests pass. Next:
+compare flat/tilted prone GL-21 tracked rounds and GR-8 aim nodes before choosing a local-frame correction.

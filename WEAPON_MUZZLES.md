@@ -1,4 +1,4 @@
-# Weapon muzzle and prone work: test.5 through test.10
+# Weapon muzzle and prone work: test.5 through test.11
 
 2026-11-01. Based on local installed Steam build 26251122. The user reports grenade arcs fit well after test.4;
 this milestone changes weapon selection/origin/view classification only. Grenade fitting and saved calibration are unchanged.
@@ -299,3 +299,41 @@ low-root estimated heading without changing higher-root values. The GR-8 test ch
 camera as an estimate; it does not assert a measured projectile match. Existing recorded GL-21 flight tests pass.
 Next check requires only supply-driver right-click and one or two GR-8 shots prone; note remaining lateral error.
 No GL-21 retest is required for unchanged profiles. Test.10 runtime pending; no remote push.
+
+
+## Test.11: prone body tilt evidence
+
+User confirms the test.10 GR-8 prone correction fits on ordinary ground, but uneven terrain changes body angle
+and the arc disagrees again. Standing/crouching remain satisfactory. Preserve the confirmed flat-ground values.
+A fixed world-yaw correction does not by itself account for a changing body/weapon local frame. Height-band
+selection may also change on uneven terrain. Neither causal contribution is established by the existing records.
+
+The loader implementation documents `chef.unit_rotation` as forward XYZ plus yaw; its fourth result is NOT roll.
+Reading that result as roll, or rotating corrections by an unmeasured terrain normal, would be invalid. Current
+shot logs contain no torso basis/roll, so they cannot validate a body-frame compensation. No guessed slope gain,
+new live learning or universal camera convergence has been applied.
+
+The already extracted avatar joint metadata names `weapon_aim`, `aim_weapon`, `boss_aim`, `hips`, `chest`,
+`l_clavicle`, `r_clavicle`. Names establish node presence, not the meaning of their runtime axes. Test.11 resolves
+these names through the existing guarded unit-node interface, caches per avatar/world (missing retry five seconds),
+and logs position/forward vectors only at bounded shot snapshots. The existing sixteen-shot / three-per-profile
+budget remains. No extra watch, world scan, per-frame skeleton read or new native API is introduced. Missing
+nodes are logged and never used as fabricated orientation values. Logging never changes a displayed trajectory.
+
+The paired clavicles and hip/chest positions can establish an observed torso frame; aim-node forward vectors can
+be compared with GL-21's actually tracked projectile direction. Possible next fixes are a fixed correction applied
+in the appropriate local frame, or a verified aim-node basis that bypasses terrain-induced visual weapon bias.
+Both require distinguishing the avatar aim node from a visual animation helper. Do not equate node names with
+actual shot direction before observation. Gravity must remain world-down even if the launch direction is corrected
+in a local frame. Vehicle context must remain separate.
+
+Verification: all 141 Lua 5.1 tests pass, including distinct captured aim-node directions, missing-node tolerance,
+no skeleton logging without a shot or while holding the trigger, and identical rendered arcs before/after logging.
+Existing fixed profiles, origin, ballistic physics, grenade/C4/stratagem behavior are unchanged. The test.10 game
+log also contains supply-FRV blocked-aim messages; final vehicle runtime acceptance is not inferred from messages
+alone. This build is diagnostic, not a completed uneven-ground correction. No remote push.
+
+Minimal required evidence: with GL-21, fire one stationary prone shot on flat ground and one where uneven ground
+visibly tilts the torso; use a similar aim direction/elevation and a distant fixed surface. GL-21 is needed because
+its round is traceable, unlike GR-8. For direct GR-8 comparison, repeat those two conditions with GR-8 and note
+which side the real impact differs from the arc. No standing/crouched or broad all-weapon survey is requested.
