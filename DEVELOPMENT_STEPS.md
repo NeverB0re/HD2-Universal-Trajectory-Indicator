@@ -130,3 +130,12 @@ Implement independent yaw acceptance within an absolute three-degree envelope, r
 large corner deflection protection, and make smoothing independent of FPS. Preserve all muzzle/ballistic/grenade
 behavior. Recorded inputs reproduce the old failure; 128 tests pass after the change. See WEAPON_MUZZLES.md for
 measurements, limits and the six-shot GL-21 check. Test.7 runtime pending; no remote push.
+
+
+## Step 4 vehicle follow-up: 1.1.1-test.8
+
+The user reports stationary passenger trajectory disagreement and false driver-seat arcs on right-click. No
+verified seat/firing eligibility reader was found in inspected local/public sources. Preserve passenger support;
+add bounded passive vehicle aim geometry/known animation-variable snapshots using existing guarded APIs before
+choosing a driver gate. Test.8 includes test.7's unverified-in-game prone correction. All 131 tests pass; vehicle
+eligibility and passenger accuracy are unresolved. See WEAPON_MUZZLES.md for the minimal stopped-car check.

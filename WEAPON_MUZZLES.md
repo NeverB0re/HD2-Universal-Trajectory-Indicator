@@ -1,4 +1,4 @@
-# Weapon muzzle and prone work: test.5 through test.7
+# Weapon muzzle and prone work: test.5 through test.8
 
 2026-11-01. Based on local installed Steam build 26251122. The user reports grenade arcs fit well after test.4;
 this milestone changes weapon selection/origin/view classification only. Grenade fitting and saved calibration are unchanged.
@@ -162,3 +162,37 @@ accuracy after installation, vertical accuracy or all-weapon coverage.
 Next live check: GL-21 first, stationary third person, wait about two seconds after each stance change, then two
 single shots each standing/crouched/prone. Also note whether the arc retains the correct origin while changing
 stance. No grenade retest or new weapon unlock is required. Test.7 is a local test build; no remote push.
+
+
+## Test.8: vehicle aim eligibility evidence (not a vehicle fix)
+
+The user reports inaccurate passenger weapon arcs even with the vehicle stationary, and arcs in the driver's seat
+on right-click although the character cannot actually lean out and aim/fire. This requires more than speed carry
+changes. Current weapon eligibility only checks aim input, held-unit proximity/alignment and camera mode. The
+existing `in_vehicle` function is a geometry heuristic for C4/icon behavior, not a seat identity or firing permission
+API. It must not be used to claim a confirmed driver/passenger role. Passenger arcs must remain available.
+
+Search of the local NarrowHUD and Chef loader sources did not yield a verified seat/firing-state reader. Public
+HD2Runtime vehicle authoring documentation likewise does not promote seat components:
+https://github.com/SkyeShade/HD2Runtime/blob/a8c53396eb345c9fd79dae36a6f8564e85b4173a/docs/vehicle-authoring.md
+This is a limitation of the inspected sources, not proof that no native reader exists. No new source download,
+unsafe native probing or guessed animation enum has been introduced.
+
+Test.8 includes test.7's on-foot yaw correction and adds bounded passive snapshots during a nearby vehicle aim
+entry and 0.7 seconds later. Up to 16 snapshots per load record camera/feet/right-hand/selected-weapon geometry
+and existing avatar animation variables `character_state`, `steering_turn`, `gunner_traverse`, `move_speed`,
+`aim_horizontal`, `aim_vertical`. Variable presence is checked through the same player-kind guarded API already
+used for `weapon_selected`; indices are cached with five-second missing retries. Missing values are logged as
+missing, not treated as a driver flag. There is no new watch or world scan and no change to aim eligibility.
+Lua 5.1's 200-local chunk limit requires storing this helper on the existing diagnostic table.
+
+Vehicle diagnostic labels explicitly say proximity is not confirmed membership. Snapshots do not themselves
+establish seat semantics or firing permission. Analyze alongside the user's known seat sequence and the bounded
+projectile records already in test.6/7 before implementing any seat gate or separate passenger direction model.
+
+Focused check with a supported weapon already owned (CB-9/GL-21/GP-20): stopped vehicle, driver right-click held
+about one second, release; switch to passenger, aim about two seconds and fire two single shots. Driver requires
+no firing. Note whether shots/line agree and which weapon was used. No moving-vehicle test is needed yet.
+Test.8 already includes test.7; it does not require installing two builds. Vehicle correction remains unresolved.
+All 131 offline Lua 5.1 tests pass, including idle-on-foot, no-fire entry/settled snapshots, bounded logging,
+preserved passenger arcs and idle projectile scanning. No remote push or in-game test.8 accuracy claim.

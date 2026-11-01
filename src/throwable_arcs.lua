@@ -9,7 +9,7 @@
 -- Transmog's catalog (Nexus 16633).
 local chef = ...
 local M = {}
-local VERSION = '1.1.1-test.7'
+local VERSION = '1.1.1-test.8'
 
 if chef.has and chef.has('own_log') then chef.own_log('throwable_arcs') end
 local function log(fmt, ...) chef.log(fmt, ...) end
@@ -1820,6 +1820,61 @@ in_vehicle = function()
   return best ~= nil and (best < VEHICLE_NEAR or (best < VEHICLE_SEAT and bup >= VEHICLE_UP))
 end
 
+-- test.8: seat/aim eligibility is not yet exposed by a verified loader API. Collect existing animation variables
+-- on vehicle aim transitions without guessing a driver enum or suppressing working passenger arcs.
+-- No new watch/world scan; at most 16 snapshots per load (entry and 0.7s after entry).
+weapon_diagnostic.vehicle = (function()
+  local state = { count = 0, indices = {} }
+  local names = { 'character_state', 'steering_turn', 'gunner_traverse', 'move_speed', 'aim_horizontal', 'aim_vertical' }
+  local function variable(name)
+    if state.unit ~= me_unit then state.unit, state.indices = me_unit, {} end
+    local row = state.indices[name]
+    if not row or (not row.index and now() >= row.next) then
+      row = { next = now() + GRIP_RETRY }; state.indices[name] = row
+      if chef.call_kind('Unit.has_animation_state_machine', PLAYER, me_unit) == true
+         and chef.call_kind('Unit.animation_has_variable', PLAYER, me_unit, name) == true then
+        local idx = chef.call_kind('Unit.animation_find_variable', PLAYER, me_unit, name)
+        if type(idx) == 'number' then row.index = idx end
+      end
+    end
+    return row.index and chef.call_kind('Unit.animation_get_variable', PLAYER, me_unit, row.index)
+  end
+  return function(c, w, muzzle, unit, kind)
+    local right, t = aim_down, now()
+    local entry = right and (not state.right or state.world ~= chef.world_id())
+    state.right, state.world = right, chef.world_id()
+    if not right then state.next = nil; return end
+    if state.count >= 16 or (not entry and (not state.next or t < state.next)) then return end
+    -- Check proximity only for the two scheduled snapshots, not every held-aim frame.
+    if not in_vehicle() then state.next = nil; return end
+    local phase
+    if entry then phase, state.next = 'entry', t + 0.7
+    elseif state.next and t >= state.next then phase, state.next = 'settled', nil end
+    if not phase then return end
+    state.count = state.count + 1
+    log('vehicle aim %d %s t=%.6f hand=%s weapon=%s; proximity is not confirmed seat membership',
+        state.count, phase, t, tostring(hand_pose()), tostring(kind))
+    local function point(label, x, y, z)
+      if type(x) == 'number' then log('vehicle aim %d %s %.6f %.6f %.6f', state.count, label, x, y, z) end
+    end
+    point('camera-position', c.x, c.y, c.z)
+    point('camera-forward', c.fx, c.fy, c.fz)
+    if me then point('feet', me[1], me[2], me[3]) end
+    local hand = right_hand()
+    if hand then point('right-hand', hand[1], hand[2], hand[3]) end
+    if unit then
+      point('weapon-root', chef.unit_position(unit))
+      point('weapon-forward', chef.unit_rotation(unit))
+    end
+    if muzzle then point('muzzle', muzzle[1], muzzle[2], muzzle[3]) end
+    if me_unit then
+      for _, name in ipairs(names) do
+        log('vehicle aim %d animation %s=%s', state.count, name, tostring(variable(name)))
+      end
+    end
+  end
+end)()
+
 local function draw_icon(mode)
   local w, h = chef.screen()
   if not (w and h) then return end
@@ -1923,6 +1978,7 @@ function M.update(dt)
     local turn, nod = camera_turn(c)
     aim = weapon_aim(c, weapon_kind, weapon_unit, math.sqrt(turn * turn + nod * nod) >= AIMING.STILL_TURN)
   end
+  weapon_diagnostic.vehicle(c, weapon, muzzle, weapon_unit, weapon_kind)
   weapon_diagnostic.update(c, weapon, muzzle, aim, weapon_unit, weapon_kind)
   local nade = grenade.update(c, not (aiming or c4_aim or h or weapon))
   cam_was = { now(), math.atan2(c.fy, c.fx), camera_pitch(c) }

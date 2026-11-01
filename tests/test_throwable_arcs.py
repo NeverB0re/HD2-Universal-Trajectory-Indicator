@@ -1745,6 +1745,37 @@ class ArcTest(unittest.TestCase):
         self.assertLess(max(map(abs, results)), .07)
         self.assertLess(max(results) - min(results), .005)
 
+    def test_vehicle_aim_diagnostic_is_idle_on_foot(self):
+        self.weapon_in_hand(self.GL)
+        self.fake['mouse']['right'] = True
+        self.frames(120)
+        self.assertNotIn('vehicle aim', self.logs())
+
+    def test_vehicle_aim_diagnostic_records_entry_and_settled_once_without_firing(self):
+        self.weapon_in_hand(self.GL)
+        self.vehicle_at(1.9, .3, -.6)
+        self.fake['mouse']['right'] = True
+        self.frames(120)
+        self.assertEqual(self.logs().count('proximity is not confirmed seat membership'), 2)
+        self.assertIn('vehicle aim 1 entry', self.logs())
+        self.assertIn('vehicle aim 2 settled', self.logs())
+        self.assertIn('animation character_state=', self.logs())
+        self.assertIn('weapon-root', self.logs())
+        self.assertGreater(len(self.lines()), 20, 'evidence collector does not disable passenger arcs')
+        self.assertFalse(self.direction_watch().active, 'no projectile scans without firing')
+        self.frames(120)
+        self.assertEqual(self.logs().count('proximity is not confirmed seat membership'), 2)
+
+    def test_vehicle_aim_diagnostic_has_a_budget(self):
+        self.weapon_in_hand(self.GL)
+        self.vehicle_at(1.9, .3, -.6)
+        for _ in range(20):
+            self.fake['mouse']['right'] = True
+            self.frames(50)
+            self.fake['mouse']['right'] = False
+            self.frames(1)
+        self.assertEqual(self.logs().count('proximity is not confirmed seat membership'), 16)
+
     def direction_watch(self):
         return next(w for w in self.fake.watches.values() if w.kinds['a6cd8a90185b6567'])
 
