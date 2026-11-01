@@ -203,3 +203,11 @@ an existing output file. It does not modify the game or its logs. Seven offline 
 tests pass. Exporting the real test.14 log exactly reproduces all five saved shot headers,
 vectors, candidates, tracks, synchronized poses and summaries; GR-8 error measurements
 remain unchanged. These checks validate evidence handling, not a prone accuracy fix.
+
+The user asks to restore the earlier representative-weapon approach. See
+`WEAPON_MODEL_FAMILIES.md`: the historical 27-shot common drag/gravity evidence is retained,
+all sixteen current weapons already use one integrator, and the source has nine distinct
+speed/gravity/drag tuples. Identical flight parameters do not establish identical pose/aim
+corrections. Existing GL-21 records supplement the two-weapon/six-shot test.15 request;
+no new full-roster or nine-tuple survey is requested. Transfer through shared geometry and
+fixed model parameters must be checked before declaring other weapons runtime-verified.
