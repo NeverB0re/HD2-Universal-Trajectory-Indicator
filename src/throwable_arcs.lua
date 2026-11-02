@@ -9,7 +9,7 @@
 -- Transmog's catalog (Nexus 16633).
 local chef = ...
 local M = {}
-local VERSION = '1.1.1-test.c7'
+local VERSION = '1.1.1-test.c8'
 
 if chef.has and chef.has('own_log') then chef.own_log('throwable_arcs') end
 local function log(fmt, ...) chef.log(fmt, ...) end
@@ -1147,6 +1147,14 @@ function AIMING.draw_circle()
   local _, h = chef.screen()
   chef.ring(sx, sy, h * 6.3 / 1200, h * 8.5 / 1200, chef.color(255, 255, 255, 128), (chef.TOP or 0) + 1100)
 end
+
+-- The game shows no crosshair while the hellpod comes down, seen from far off: the camera 28-37 m from my weapon (on foot
+-- at most 6 m, seated about 7). No arc or circle then. Nor a circle on the ship: only the circle, for the loader has
+-- taken a small mission for the ship before (Chef 1.2.1), and a missing circle is the lesser harm there.
+function AIMING.my_view(c, muzzle)
+  return not muzzle or (muzzle[1] - c.x) ^ 2 + (muzzle[2] - c.y) ^ 2 + (muzzle[3] - c.z) ^ 2 < 12 * 12
+end
+function AIMING.on_the_ship() return chef.in_mission ~= nil and chef.in_mission() == false end
 
 -- Another mod's first-person camera (First Person Camera, Nexus 17827): the game goes on aiming from its own camera, so
 -- the weapon's field holds, and x4joxek, on the real camera's line, lies off this one. Real cameras, held still, under
@@ -2383,6 +2391,7 @@ function M.update(dt)
   local h = follow_hold()
   local weapon, muzzle, weapon_unit, weapon_kind, weapon_fp, aim, aim_mode
   if not (aiming or c4_aim or h) then weapon, muzzle, weapon_unit, weapon_kind, weapon_fp = weapon_aimed(c) end
+  if weapon and not AIMING.my_view(c, muzzle) then weapon, muzzle, weapon_unit, weapon_kind, weapon_fp = nil, nil, nil, nil, nil end
   if weapon then
     aim, aim_mode = weapon_aim(c, weapon_kind, weapon_unit, muzzle, weapon_fp)
   end
@@ -2399,7 +2408,7 @@ function M.update(dt)
     draw_points(c, nade)
   elseif weapon and weapon.circle then
     clear_arc()
-    if aim then AIMING.draw_circle() end
+    if aim and not AIMING.on_the_ship() then AIMING.draw_circle() end
   elseif weapon then
     draw_points(c, weapon_path(c, weapon, muzzle, aim))
   else

@@ -49,7 +49,7 @@ chef = {
   log = function(fmt, ...) fake.logs[#fake.logs + 1] = string.format(fmt, ...) end,
   time = function() return fake.t end,
   call = call, call_kind = function(name, kind, ...) return call(name, ...) end,
-  world = function() return world end, world_id = function() return 4 end, in_mission = function() return false end,
+  world = function() return world end, world_id = function() return 4 end, in_mission = function() return not fake.on_ship end,
   camera = function() return fake.cam end,
   unit_alive = function(u) return u.dead ~= true end,
   unit_kind = function(u) return u.kind end,
@@ -2621,6 +2621,62 @@ class ArcTest(unittest.TestCase):
         self.hand_pose(41)
         self.frames(30)
         self.assertEqual(self.circles(), [])
+
+    def test_no_circle_on_the_ship(self):
+        self.rifle()
+        self.right_hand_at(1.8, -.2, 1.2)
+        self.frames(2)
+        self.assertEqual(len(self.circles()), 1, 'in a mission')
+        self.lua.eval("function(f) f.on_ship = true end")(self.fake)
+        self.frames(2)
+        self.assertEqual(self.circles(), [])
+        self.fake['mouse']['right'] = True
+        self.frames(2)
+        self.assertEqual(self.circles(), [], 'nor aiming')
+
+    def test_on_the_ship_a_weapon_arc_is_still_drawn(self):
+        self.lua.eval("function(f) f.on_ship = true end")(self.fake)
+        self.weapon_in_hand(self.GL)
+        self.fake['mouse']['right'] = True
+        self.frames(2)
+        self.assertGreater(len(self.lines()), 20, 'the loader has taken small missions for the ship')
+
+    def camera_up(self, up):
+        """the camera straight above where it was, as the hellpod's: my helldiver stays found, being close across"""
+        self.lua.eval("function(f, up) f.cam.z = f.cam_z + up end")(self.fake, up)
+
+    def test_no_circle_or_arc_while_the_camera_is_far_off_as_in_the_hellpod(self):
+        self.rifle()
+        self.right_hand_at(1.8, -.2, 1.2)
+        self.lua.eval("function(f) f.cam_z = f.cam.z end")(self.fake)
+        self.frames(2)
+        self.assertEqual(len(self.circles()), 1)
+        self.camera_up(30)
+        self.frames(2)
+        self.assertEqual(self.circles(), [])
+        self.assertTrue(self.fake.me is not None)
+        self.camera_up(0)
+        self.frames(2)
+        self.assertEqual(len(self.circles()), 1, 'back as soon as the view is mine')
+        self.setUp()
+        gun = self.weapon_in_hand(self.GL)
+        self.weapon_nodes(gun, (2.25, -.2, 1.2))
+        self.lua.eval("function(f) f.cam_z = f.cam.z end")(self.fake)
+        self.fake['mouse']['right'] = True
+        self.frames(2)
+        self.assertGreater(len(self.lines()), 20)
+        self.camera_up(30)
+        self.frames(2)
+        self.assertTrue(self.no_arc())
+
+    def test_a_seated_view_keeps_them(self):
+        self.rifle()
+        self.right_hand_at(1.8, -.2, 1.2)
+        self.lua.eval("function(f) f.cam_z = f.cam.z end")(self.fake)
+        self.frames(2)
+        self.camera_up(8)                    # about 8 m from the muzzle, as seated in a vehicle
+        self.frames(2)
+        self.assertEqual(len(self.circles()), 1)
 
     def test_no_circle_for_a_point_behind_the_screen_or_in_first_person(self):
         gun = self.rifle()
