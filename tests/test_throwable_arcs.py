@@ -2567,6 +2567,11 @@ class ArcTest(unittest.TestCase):
         self.game_weapon_hit(40., 2., 1.)
         return gun
 
+    def rifle_in_my_hand(self, *at):
+        """the hand at the rifle, and the circle's option for not aiming on"""
+        self.fake.changes['aim_circle_idle'](True)
+        self.right_hand_at(*(at or (1.8, -.2, 1.2)))
+
     def no_arc(self):
         return [l for l in self.lines() if l[0] > -9000] == []
 
@@ -2597,7 +2602,7 @@ class ArcTest(unittest.TestCase):
 
     def test_the_circle_shows_while_a_rifle_is_in_my_hand_aimed_or_not(self):
         self.rifle()
-        self.right_hand_at(1.8, -.2, 1.2)
+        self.rifle_in_my_hand()
         self.frames(2)
         self.assertEqual(len(self.circles()), 1, 'not aiming')
         self.fake['mouse']['right'] = True
@@ -2607,15 +2612,27 @@ class ArcTest(unittest.TestCase):
         self.frames(2)
         self.assertEqual(len(self.circles()), 1, 'not aiming again')
 
+    def test_by_default_the_circle_shows_only_while_aiming(self):
+        self.rifle()
+        self.right_hand_at(1.8, -.2, 1.2)
+        self.frames(20)
+        self.assertEqual(self.circles(), [], 'not aiming')
+        self.fake['mouse']['right'] = True
+        self.frames(2)
+        self.assertEqual(len(self.circles()), 1, 'aiming')
+        self.fake['mouse']['right'] = False
+        self.frames(2)
+        self.assertEqual(self.circles(), [], 'not aiming again')
+
     def test_a_slung_rifle_shows_no_circle(self):
         self.rifle()
-        self.right_hand_at(1.0, .6, 1.2)
+        self.rifle_in_my_hand(1.0, .6, 1.2)
         self.frames(30)
         self.assertEqual(self.circles(), [])
 
     def test_a_grenade_arc_goes_before_the_idle_circle(self):
         self.rifle()
-        self.right_hand_at(1.8, -.2, 1.2)
+        self.rifle_in_my_hand()
         self.hand_pose(70)
         self.frames(2)
         self.assertEqual(len(self.circles()), 1)
@@ -2625,7 +2642,7 @@ class ArcTest(unittest.TestCase):
 
     def test_no_circle_on_the_ship(self):
         self.rifle()
-        self.right_hand_at(1.8, -.2, 1.2)
+        self.rifle_in_my_hand()
         self.frames(2)
         self.assertEqual(len(self.circles()), 1, 'in a mission')
         self.lua.eval("function(f) f.on_ship = true end")(self.fake)
@@ -2648,7 +2665,7 @@ class ArcTest(unittest.TestCase):
 
     def test_no_circle_or_arc_while_the_camera_is_far_off_as_in_the_hellpod(self):
         self.rifle()
-        self.right_hand_at(1.8, -.2, 1.2)
+        self.rifle_in_my_hand()
         self.lua.eval("function(f) f.cam_z = f.cam.z end")(self.fake)
         self.frames(2)
         self.assertEqual(len(self.circles()), 1)
@@ -2672,7 +2689,7 @@ class ArcTest(unittest.TestCase):
 
     def test_a_seated_view_keeps_them(self):
         self.rifle()
-        self.right_hand_at(1.8, -.2, 1.2)
+        self.rifle_in_my_hand()
         self.lua.eval("function(f) f.cam_z = f.cam.z end")(self.fake)
         self.frames(2)
         self.camera_up(8)                    # about 8 m from the muzzle, as seated in a vehicle
@@ -2713,7 +2730,7 @@ class ArcTest(unittest.TestCase):
 
     def test_no_circle_seated_in_a_vehicle_until_aiming_from_it(self):
         self.rifle()
-        self.right_hand_at(1.8, -.2, 1.2)
+        self.rifle_in_my_hand()
         self.frames(20)
         self.assertEqual(len(self.circles()), 1, 'on foot')
         car = self.vehicle_at(self.fake.me.x + .4, .3, self.fake.me.z - .6)
@@ -2745,7 +2762,7 @@ class ArcTest(unittest.TestCase):
         self.lua.eval("function(f, id) f.opts[id] = false end")(self.fake, 'weapon_' + self.AMR)
         self.M = self.load()
         self.rifle()
-        self.right_hand_at(1.8, -.2, 1.2)
+        self.rifle_in_my_hand()
         self.frames(20)
         self.assertEqual(self.circles(), [])
         self.fake['mouse']['right'] = True
@@ -2754,7 +2771,7 @@ class ArcTest(unittest.TestCase):
 
     def test_each_rifle_can_be_turned_off_by_itself(self):
         self.rifle()
-        self.right_hand_at(1.8, -.2, 1.2)
+        self.rifle_in_my_hand()
         self.frames(2)
         self.fake.changes['weapon_' + self.SIGHTLINER](False)
         self.frames(20)
@@ -2797,7 +2814,9 @@ class ArcTest(unittest.TestCase):
             self.assertIn(kept, ids)
         self.assertEqual([r.heading for r in rows if r.heading],
                          ['Arc look', 'Stratagems, C4 and grenades', 'Weapon arcs', 'Aim circle for rifles with no crosshair'])
-        self.assertEqual(ids.index('aim_circle'), len(ids) - 4, 'the three rifles under it')
+        self.assertEqual(ids.index('aim_circle'), len(ids) - 5, 'the three rifles under it')
+        self.assertEqual(ids[-4], 'aim_circle_idle')
+        self.assertEqual(rows[-4].default, False)
         self.assertEqual(sum(i.startswith('weapon_') and i not in ('weapon_arcs', 'weapon_arcs_first_person') for i in ids), 19)
         self.assertEqual(next(r.default for r in rows if r.id == 'weapon_arcs_first_person'), False)
         self.assertEqual([r.label for r in rows[ids.index('weapon_arcs_first_person') + 1:]][:2],
@@ -2952,7 +2971,7 @@ class ArcTest(unittest.TestCase):
 
     def test_aiming_a_weapon_it_doesnt_know_names_whats_at_my_hand_now_and_then(self):
         self.lua.eval("function(f) f.me.x = 1.5 end")(self.fake)
-        self.right_hand_at(1.8, -.2, 1.2)
+        self.rifle_in_my_hand()
         rifle = self.add_unit('cccccccccccccccc', 1.8, -.2, 1.2)
         self.lua.eval("function(u) u.f = { 1, 0, 0 } end")(rifle)
         self.fake['mouse']['right'] = True

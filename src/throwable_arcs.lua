@@ -789,7 +789,7 @@ end
 local WEAPON_K, WEAPON_LIFT, WEAPON_FROM = 4.7e-4, math.rad(0.6), { 1.3, -0.18, -0.35 }
 local WEAPON_STEP = 1 / 120      -- s per step of the flight
 local MUZZLE, SEG, SEG_FAR, MOST_POINTS = 0.45, 0.66, 0.015, 800   -- MUZZLE is only the unavailable-node fallback now
-local AIMING = { HELD_KEEP = 0.8, circle_on = true, first_person = false, stratagem_on = true, c4_on = true }
+local AIMING = { HELD_KEEP = 0.8, circle_on = true, circle_idle = false, first_person = false, stratagem_on = true, c4_on = true }
 local SIDE_CARRY = 0.5
 -- First person: a nearby camera at the weapon's sight; root distance is only a compatibility fallback. Actual hand
 -- proximity can identify a held weapon despite a lagging barrel while prone; without the hand, retain HELD_ALONG.
@@ -1182,13 +1182,13 @@ AIMING.camera_moved = (function()
   end
 end)()
 
--- Those rifles show their circle whenever they are in my hand, aimed or not: looked for five times a second, at the hand
+-- With its option (off by default) those rifles show their circle whenever they are in my hand: looked for five times a second, at the hand
 -- (a weapon's root is at the grip), not with a throwable out. Not seated in a vehicle, unless aiming from it: the game's
 -- crosshairs show only then.
 AIMING.idle_circle = (function()
   local kind, unit, next_look = nil, nil, 0
   return function(c)
-    if not (AIMING.circle_on and weapon_watch and me) then return nil end
+    if not (AIMING.circle_on and AIMING.circle_idle and weapon_watch and me) then return nil end
     local t = now()
     if t >= next_look then
       next_look, kind, unit = t + 0.2, nil, nil
@@ -2217,6 +2217,7 @@ if chef.has and chef.has('menu') then
   end
   weapon_rows(false)
   toggle('aim_circle', 'All aim circles', true, function(v) AIMING.circle_on = v end, 'Aim circle for rifles with no crosshair')
+  toggle('aim_circle_idle', 'Also while not aiming', false, function(v) AIMING.circle_idle = v end)
   weapon_rows(true)
 end
 local icon_mode, icon_next = nil, 0

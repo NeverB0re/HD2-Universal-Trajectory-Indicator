@@ -40,8 +40,8 @@ weapon is aimed at, with no corrections per weapon, stance or distance. Evidence
 In first person (an option, off by default) the same field is read 0.04 s ahead, as it arrives that late.
 
 **Aim circle:** a ring like the game's for the APW-1, R-40 Sightliner and AMW-20 Apex, which have no third-person
-crosshair: at the same point, in the hand or aimed. Not on the ship, in the hellpod or seated in a vehicle (unless
-aiming from it).
+crosshair: at the same point, while aimed. With an option (off by default) whenever one is in the hand, but not seated in
+a vehicle. Never on the ship or in the hellpod.
 
 **First-person camera mods** (First Person Camera, Nexus 17827): not tested. The game goes on aiming from its own camera,
 so the field holds; a moved camera is noticed (`AIMING.camera_moved`) and treated as third person.

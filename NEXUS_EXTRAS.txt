@@ -7,7 +7,7 @@ Formerly Stratagem and C4 Trajectory. See where stratagems, C4, grenades and wea
 Changelog 1.2.0 (Nexus changelog field, one change per line):
 New name: Stratagem and C4 Trajectory is now Universal Trajectory Indicator. Remove the old one from your mod manager when updating; settings and learned grenade throws carry over.
 Weapon arcs are accurate in any situation: the arc now runs from the real muzzle to the point the game itself says your weapon is aimed at, with no corrections per weapon, stance or distance. The prone close-range error is gone.
-New: an aim circle like the game's for the APW-1, R-40 Sightliner and AMW-20 Apex, which have no third-person crosshair. It hides on the ship, in the hellpod and while seated in a vehicle.
+New: an aim circle like the game's for the APW-1, R-40 Sightliner and AMW-20 Apex, which have no third-person crosshair, while you aim. An option (off by default) keeps it up whenever the rifle is in your hand. Never on the ship or in the hellpod.
 New option: weapon arcs while aiming in first person (off by default). They follow the weapon's sight.
 First-person camera mods: taken into account, not tested. The aim is read from the game, and a camera moved by another mod is noticed.
 New options in folded sections: stratagem arcs, C4 arcs, and each weapon and rifle on its own. Sections fold on Chef Shared Loader 1.4.0 or newer.
@@ -17,7 +17,7 @@ Arcs no longer cut out in fast turns.
 변경 내역 1.2.0 (한국어):
 이름 변경: Stratagem and C4 Trajectory가 Universal Trajectory Indicator로 바뀌었습니다. 업데이트할 때 모드 관리자에서 이전 것을 제거하세요. 설정과 학습된 수류탄 투척은 그대로 이어집니다.
 어떤 상황에서든 정확한 무기 궤적: 실제 총구에서 게임이 직접 알려 주는 무기의 조준 지점으로 궤적을 그립니다. 무기, 자세, 거리별 보정값은 없앴습니다. 엎드려 가까운 곳을 조준할 때 어긋나던 문제도 해결됐습니다.
-새 기능: 3인칭 조준점이 없는 APW-1, R-40 사이트라이너, AMW-20 에이펙스에 게임과 같은 조준 원을 표시합니다. 함선, 헬포드 강하 중, 탑승물에 타 있는 동안에는 숨습니다.
+새 기능: 3인칭 조준점이 없는 APW-1, R-40 사이트라이너, AMW-20 에이펙스에 조준하는 동안 게임과 같은 조준 원을 표시합니다. 옵션(기본값 꺼짐)을 켜면 손에 들고 있는 동안에도 표시됩니다. 함선과 헬포드 강하 중에는 표시되지 않습니다.
 새 옵션: 1인칭 조준 중 무기 궤적(기본값 꺼짐). 무기 조준기를 따라갑니다.
 1인칭 카메라 모드: 호환성을 고려했지만 시험하지는 못했습니다. 조준을 게임에서 읽고, 다른 모드가 카메라를 옮긴 것을 알아챕니다.
 접히는 항목으로 나뉜 새 옵션: 스트라타젬 궤적, C4 궤적, 무기와 소총별 켜고 끄기. 항목 접기는 Chef Shared Loader 1.4.0 이상에서 됩니다.
