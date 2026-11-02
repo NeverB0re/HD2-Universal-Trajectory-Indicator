@@ -207,3 +207,20 @@ untrackable. Correct that inference. Old raw GR-8 numbers were not recovered fro
 restore bounded Chef new-unit discovery, explicit candidate identity uncertainty and synchronized model sampling.
 Do not apply a numerical correction yet. Strip all weapon/vehicle diagnostic blocks and hooks from stable builds.
 152 tests pass; two-shot GR-8 capture pending. NATIVE_PROJECTILE_RESEARCH.md records the corrected evidence.
+
+
+## Held-weapon visibility guards: 1.2.1-test.2 (2026-11-02)
+
+The reported 1.2.0 session used Chef Shared Loader 1.5.1. Its normal log identifies selected candidate names but
+not the actual equipped unit or mounted seat, so it cannot by itself prove the user's current weapon identity.
+The held-weapon selector allowed any supported root within 1 m of the right hand to win on camera alignment,
+including a slung launcher during high aim or a dive. Acquisition and cache retention now require the existing
+0.35 m positive hand/root tolerance whenever the hand node is readable; alignment remains only the no-node fallback.
+An empty hand pose also rejects weapon selection. This prevents slung-weapon selection when hands move to an
+emplacement, without suppressing nearby vehicles by proximity or changing passenger ballistics.
+Weapon arcs and circles now respect the loader's `in_mission()` flag. Older loaders that misclassify small missions
+can suppress weapon overlays there; use the current loader. Throwables and their calibration are unchanged.
+Regression checks cover slung/unsupported high aim, dive alignment, mounted hands, empty hands and ship exit,
+while existing prone, first-person and FRV passenger checks remain in the suite. Runtime verification is pending:
+check the ship, an emplacement, then an unsupported support weapon while a supported launcher is slung; finally
+confirm that handheld supported aiming still works. No firing or recalibration is required for these checks.

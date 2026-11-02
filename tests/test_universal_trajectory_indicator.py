@@ -652,6 +652,43 @@ class ArcTest(unittest.TestCase):
         self.frames(1)
         self.assertEqual(len(self.lines()), 1)
 
+    def test_slung_launcher_cannot_be_acquired_by_high_aim_or_dive_alignment(self):
+        gun = self.weapon_in_hand(self.GL)
+        self.hand_pose(20)
+        self.fake['mouse']['right'] = True
+        for forward in ((1, 0, 0), (.6, 0, .8), (0, 0, 1)):
+            self.right_hand_at(gun.x, gun.y + .5, gun.z)
+            self.add_unit('cccccccccccccccc', gun.x, gun.y + .5, gun.z)  # unsupported gun at the hand
+            self.lua.eval('function(g, f) g.f = f end')(gun, self.lua.table_from(forward))
+            self.lua.eval('function(f, a) f.cam.fx, f.cam.fy, f.cam.fz = a[1], a[2], a[3] end')(
+                self.fake, self.lua.table_from(forward))
+            self.frames(2)
+            self.assertLessEqual(len(self.lines()), 1, 'slung root must not win through camera alignment')
+
+    def test_mounted_hands_release_cached_slung_weapon_and_resume_on_dismount(self):
+        gun = self.weapon_in_hand(self.GL)
+        self.right_hand_at(gun.x, gun.y, gun.z)
+        self.hand_pose(20)
+        self.fake['mouse']['right'] = True
+        self.frames(3)
+        self.assertGreater(len(self.lines()), 20)
+        self.right_hand_at(gun.x + .6, gun.y, gun.z)
+        self.frames(1)
+        self.assertLessEqual(len(self.lines()), 1, 'hands on the emplacement, not the slung launcher')
+        self.frames(2)
+        self.assertEqual(self.lines(), [], 'cannot reacquire a slung weapon while mounted')
+        self.right_hand_at(gun.x, gun.y, gun.z)
+        self.frames(1)
+        self.assertGreater(len(self.lines()), 20, 'handheld aiming returns immediately')
+
+    def test_empty_hands_cannot_select_a_nearby_aligned_launcher(self):
+        gun = self.weapon_in_hand(self.GL)
+        self.right_hand_at(gun.x, gun.y, gun.z)
+        self.hand_pose(0)
+        self.fake['mouse']['right'] = True
+        self.frames(3)
+        self.assertEqual(self.lines(), [])
+
     def test_switching_to_a_grenade_invalidates_the_weapon_even_with_aim_held(self):
         gun = self.weapon_in_hand(self.GL)
         self.right_hand_at(gun.x, gun.y, gun.z)
@@ -2652,12 +2689,15 @@ class ArcTest(unittest.TestCase):
         self.frames(2)
         self.assertEqual(self.circles(), [], 'nor aiming')
 
-    def test_on_the_ship_a_weapon_arc_is_still_drawn(self):
+    def test_on_the_ship_no_weapon_arc_is_drawn(self):
         self.lua.eval("function(f) f.on_ship = true end")(self.fake)
         self.weapon_in_hand(self.GL)
         self.fake['mouse']['right'] = True
         self.frames(2)
-        self.assertGreater(len(self.lines()), 20, 'the loader has taken small missions for the ship')
+        self.assertEqual(self.lines(), [], 'do not draw mission weapon paths on the ship')
+        self.fake.on_ship = False
+        self.frames(1)
+        self.assertGreater(len(self.lines()), 20, 'mission aiming resumes without equipping again')
 
     def camera_up(self, up):
         """the camera straight above where it was, as the hellpod's: my helldiver stays found, being close across"""
@@ -2959,7 +2999,7 @@ class ArcTest(unittest.TestCase):
 
     def test_a_held_weapon_isnt_lost_when_it_lags_a_fast_turn(self):
         gun = self.weapon_in_hand(self.GL)
-        self.right_hand_at(1.8, -.7, 1.2)                   # 0.5 m from the unit: not its grip, as in first person
+        self.right_hand_at(1.8, -.4, 1.2)                   # the held grip remains 0.2 m from the hand
         self.fake['mouse']['right'] = True
         self.frames(2)
         self.assertGreater(len(self.lines()), 20)

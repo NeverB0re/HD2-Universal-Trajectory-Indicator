@@ -9,7 +9,7 @@
 -- Transmog's catalog (Nexus 16633).
 local chef = ...
 local M = {}
-local VERSION = '1.2.1-test.1'
+local VERSION = '1.2.1-test.2'
 
 if chef.has and chef.has('own_log') then chef.own_log('universal_trajectory_indicator') end
 local function log(fmt, ...) chef.log(fmt, ...) end
@@ -841,8 +841,8 @@ local held = nil                 -- { kind, unit }: kept while aiming lasts
 local function held_weapon(c)
   if not (weapon_watch and me) then return nil end
   local grip, hand = hand_pose(), right_hand()
-  if grip == 40 or grip == 41 or grip == 42 then
-    held, held_miss = nil, 'throwable hand pose'
+  if grip == 0 or grip == 40 or grip == 41 or grip == 42 then
+    held, held_miss = nil, grip == 0 and 'empty hand pose' or 'throwable hand pose'
     return nil
   end
   local function near(u)
@@ -850,7 +850,9 @@ local function held_weapon(c)
     if not x or (x - me[1]) ^ 2 + (y - me[2]) ^ 2 >= HELD_NEAR * HELD_NEAR then return false end
     -- Weapon roots are at the grip. Reject a slung/dropped/other player's weapon when the hand node is available.
     local d = hand and ((x - hand[1]) ^ 2 + (y - hand[2]) ^ 2 + (z - hand[3]) ^ 2)
-    return not hand or d <= 1, d
+    -- Camera alignment cannot establish possession: a slung launcher can align during a dive or high aim.
+    -- Use the same hand/root tolerance already used for positive held-weapon and idle-circle identification.
+    return not hand or d <= 0.35 * 0.35, d
   end
   if held and chef.unit_alive(held.unit) then
     local nearby, hand_d = near(held.unit)
@@ -1150,8 +1152,8 @@ function AIMING.draw_circle()
 end
 
 -- The game shows no crosshair while the hellpod comes down, seen from far off: the camera 28-37 m from my weapon (on foot
--- at most 6 m, seated about 7). No arc or circle then. Nor a circle on the ship: only the circle, for the loader has
--- taken a small mission for the ship before (Chef 1.2.1), and a missing circle is the lesser harm there.
+-- at most 6 m, seated about 7). No arc or circle then. Weapon arcs/circles also follow the loader mission flag;
+-- older loaders could classify small missions as the ship, so keep this limitation explicit in the development notes.
 function AIMING.my_view(c, muzzle)
   return not muzzle or (muzzle[1] - c.x) ^ 2 + (muzzle[2] - c.y) ^ 2 + (muzzle[3] - c.z) ^ 2 < 12 * 12
 end
@@ -2129,6 +2131,10 @@ end)()
 
 -- the weapon to draw for this frame: its row in WEAPONS and its muzzle, or nil
 local function weapon_aimed(c)
+  if AIMING.on_the_ship() then
+    said_weapon, held, held_miss, weapon_log_at = nil, nil, nil, 0
+    return nil
+  end
   if not ((weapon_arcs or AIMING.circle_on) and aim_down) then
     said_weapon, held = nil, nil
     weapon_log_at = 0
