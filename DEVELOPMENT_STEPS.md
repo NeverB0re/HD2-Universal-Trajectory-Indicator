@@ -1,4 +1,12 @@
-# Throwable Arcs completion work
+# Universal Trajectory Indicator development
+
+## Current baseline (2026-11-02)
+
+- The canonical workspace is `mods/throwable-arcs` on `main`, consolidated from the former `throwable-arcs-claude` linked worktree. That redundant worktree was removed after verifying the migrated files.
+- Version 1.2.0 is released on GitHub and Nexus. Preserve the existing release ZIP and internal resource/settings identifiers.
+- Current weapon direction uses the game avatar aim target; see `CROSSHAIR_AIM_FINDINGS.md` and `README.md`. The milestones and test-version notes below are historical, not a list of current unresolved defects.
+- Local experiment archives, earlier research and the Python environment remain available. The local handover is excluded from Git.
+- Continue development in this workspace with Codex; no second agent workspace is required.
 
 ## Goal and rules (2026-10-31)
 
@@ -7,7 +15,7 @@
 - Prefer existing game data, loader APIs and source research over new game experiments. Measure only what those sources cannot establish.
 - Optimize without deleting features. Passing offline checks is not proof of actual gameplay, accuracy or FPS.
 - Keep feature-sized local commits. Push only a substantial stable milestone after real-game testing. No experimental pushes.
-- Another AI agent also works on this mod: check the current branch/status before editing and coordinate overlapping files through the user.
+- Check the current branch and working-tree status before editing; preserve unrelated local files and changes.
 - Ask before downloading additional mod/data files. Public source browsing and existing local research can be used first.
 
 ## Ordered milestones
