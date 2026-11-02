@@ -1,4 +1,4 @@
-"""Stratagem and C4 Trajectory on PUC Lua 5.1 (lupa) against a fake Chef Shared Loader:  python tests/test_throwable_arcs.py"""
+"""Universal Trajectory Indicator on PUC Lua 5.1 (lupa) against a fake Chef Shared Loader:  python tests/test_throwable_arcs.py"""
 import importlib.util
 import json
 import math
@@ -16,7 +16,7 @@ _spec.loader.exec_module(ta_build)   # the mod's build.py: the source with its a
 
 FAKE = r"""
 local fake = { t = 0, logs = {}, down = {}, pressed = {}, mouse = {}, wheel = 0, lines = {}, calls = {}, cam = nil,
-               watches = {}, saved = {}, opts = {}, changes = {}, shapes = {}, settings = {} }
+               watches = {}, saved = {}, opts = {}, changes = {}, shapes = {}, settings = {}, rows = {} }
 local world = newproxy(true)
 
 local PLAYER = '4d1c334d294dfa97'
@@ -104,6 +104,7 @@ chef = {
   title = function() end,
   TOP = 100000,
   option = function(id, spec)
+    fake.rows[#fake.rows + 1] = { id = id, heading = spec.heading, label = spec.label, default = spec.default }
     local v = fake.opts[id]
     if v == nil then v = spec.default end
     return v
@@ -185,7 +186,7 @@ class ArcTest(unittest.TestCase):
         self.M = self.load()
 
     def load(self):
-        return self.lua.execute(ta_build.built_source(), self.lua.globals().chef)
+        return self.lua.execute(ta_build.built_source(development=True), self.lua.globals().chef)
 
     def frames(self, n, dt=1 / 60):
         for _ in range(n):
@@ -2037,7 +2038,7 @@ class ArcTest(unittest.TestCase):
         self.assertEqual(self.logs().count('GR-8 discovery armed'), 1)
 
     def test_stable_source_excludes_development_collectors_and_hooks(self):
-        source = ta_build.strip_development_tracing(ta_build.built_source())
+        source = ta_build.strip_development_tracing(ta_build.built_source(development=True))
         for token in ('weapon_diagnostic', 'candidate-summary', 'GR-8 discovery armed', 'vehicle aim', 'body_snapshot',
                       'aim_probe', 'aim quick', 'aim pre', 'unknown_weapon', 'AIM_PROFILES', 'weapon_profile'):
             self.assertNotIn(token, source)
@@ -2441,7 +2442,7 @@ class ArcTest(unittest.TestCase):
         self.assertEqual(self.fake.target_finds, 2)
 
     def test_stable_build_keeps_the_aim_line(self):
-        source = ta_build.strip_development_tracing(ta_build.built_source())
+        source = ta_build.strip_development_tracing(ta_build.built_source(development=True))
         self.assertIn('aim_constraint_target', source)
         self.assertIn('rm_qp0d', source)
         self.M = self.lua.execute(source, self.lua.globals().chef)
@@ -2709,6 +2710,98 @@ class ArcTest(unittest.TestCase):
         self.fake.changes['aim_circle'](False)
         self.frames(2)
         self.assertGreater(len(self.lines()), 20)
+
+    def test_no_circle_seated_in_a_vehicle_until_aiming_from_it(self):
+        self.rifle()
+        self.right_hand_at(1.8, -.2, 1.2)
+        self.frames(20)
+        self.assertEqual(len(self.circles()), 1, 'on foot')
+        car = self.vehicle_at(self.fake.me.x + .4, .3, self.fake.me.z - .6)
+        self.frames(20)
+        self.assertEqual(self.circles(), [], 'seated')
+        self.fake['mouse']['right'] = True
+        self.frames(2)
+        self.assertEqual(len(self.circles()), 1, 'a passenger aiming')
+        self.fake['mouse']['right'] = False
+        self.frames(20)
+        self.assertEqual(self.circles(), [])
+        self.lua.eval("function(u) u.x = 50 end")(car)
+        self.frames(20)
+        self.assertEqual(len(self.circles()), 1, 'out of it')
+
+    def test_each_weapon_can_be_turned_off_by_itself(self):
+        gun = self.weapon_in_hand(self.GL)
+        self.fake['mouse']['right'] = True
+        self.frames(2)
+        self.assertGreater(len(self.lines()), 20)
+        self.fake.changes['weapon_' + self.GL](False)
+        self.frames(2)
+        self.assertTrue(self.no_arc())
+        self.fake.changes['weapon_' + self.GL](True)
+        self.frames(2)
+        self.assertGreater(len(self.lines()), 20)
+
+    def test_a_weapon_turned_off_stays_off_after_a_restart(self):
+        self.lua.eval("function(f, id) f.opts[id] = false end")(self.fake, 'weapon_' + self.AMR)
+        self.M = self.load()
+        self.rifle()
+        self.right_hand_at(1.8, -.2, 1.2)
+        self.frames(20)
+        self.assertEqual(self.circles(), [])
+        self.fake['mouse']['right'] = True
+        self.frames(2)
+        self.assertEqual(self.circles(), [])
+
+    def test_each_rifle_can_be_turned_off_by_itself(self):
+        self.rifle()
+        self.right_hand_at(1.8, -.2, 1.2)
+        self.frames(2)
+        self.fake.changes['weapon_' + self.SIGHTLINER](False)
+        self.frames(20)
+        self.assertEqual(len(self.circles()), 1, 'another rifle')
+        self.fake.changes['weapon_' + self.AMR](False)
+        self.frames(20)
+        self.assertEqual(self.circles(), [])
+        self.fake['mouse']['right'] = True
+        self.frames(2)
+        self.assertEqual(self.circles(), [], 'aimed too')
+
+    def test_the_stratagem_arcs_turn_off(self):
+        self.aim(10)
+        self.assertGreater(len(self.lines()), 20)
+        self.fake.changes['stratagem_arcs'](False)
+        self.frames(2)
+        self.assertEqual(self.lines(), [])
+        self.fake.changes['stratagem_arcs'](True)
+        self.frames(1)
+        self.assertGreater(len(self.lines()), 20)
+
+    def test_the_c4_arcs_turn_off_and_the_icon_stays(self):
+        self.hand_pose(42)
+        self.c4_object(80)
+        self.c4_aim_try()
+        self.frames(10)
+        self.assertGreater(len(self.lines()), 20)
+        self.assertEqual(len(self.shapes()), 1, 'the icon')
+        self.fake.changes['c4_arcs'](False)
+        self.frames(2)
+        self.assertEqual(self.lines(), [])
+        self.assertEqual(len(self.shapes()), 1, 'the icon')
+
+    def test_the_options_are_in_sections_listing_every_weapon_and_keep_their_saved_ids(self):
+        rows = [self.fake.rows[i + 1] for i in range(len(self.fake.rows))]
+        ids = [r.id for r in rows]
+        self.assertEqual(len(ids), len(set(ids)))
+        for kept in ('arc_color', 'arc_width', 'arc_solid', 'c4_icon', 'weapon_arcs', 'weapon_arcs_first_person',
+                     'aim_circle', 'grenade_arcs'):
+            self.assertIn(kept, ids)
+        self.assertEqual([r.heading for r in rows if r.heading],
+                         ['Arc look', 'Stratagems, C4 and grenades', 'Weapon arcs', 'Aim circle for rifles with no crosshair'])
+        self.assertEqual(ids.index('aim_circle'), len(ids) - 4, 'the three rifles under it')
+        self.assertEqual(sum(i.startswith('weapon_') and i not in ('weapon_arcs', 'weapon_arcs_first_person') for i in ids), 19)
+        self.assertEqual(next(r.default for r in rows if r.id == 'weapon_arcs_first_person'), False)
+        self.assertEqual([r.label for r in rows[ids.index('weapon_arcs_first_person') + 1:]][:2],
+                         ['AR/GL-21 One-Two (its grenade launcher)', 'CB-9 Exploding Crossbow'])
 
     def first_person_gl(self):
         gun = self.weapon_in_hand(self.GL, back=0.1)

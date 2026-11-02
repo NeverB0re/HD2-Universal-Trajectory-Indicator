@@ -9,7 +9,7 @@ import math
 import re
 from pathlib import Path
 
-VERSION = re.compile(r'Stratagem and C4 Trajectory ([\w.\-]+), loader')
+VERSION = re.compile(r'(?:Universal Trajectory Indicator|Stratagem and C4 Trajectory) ([\w.\-]+), loader')
 ENTRY = re.compile(r'weapon direction (\d+) (.*)$')
 NUMBER = r'[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?'
 VECTOR = re.compile(r'([\w-]+) (' + NUMBER + r') (' + NUMBER + r') (' + NUMBER + r')$')

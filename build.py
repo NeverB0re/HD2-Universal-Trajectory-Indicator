@@ -1,4 +1,4 @@
-"""Build Stratagem and C4 Trajectory into a mod zip (HD2 Arsenal, Modocracy):  python build.py -> dist/Stratagem and C4 Trajectory v<version>.zip
+"""Build Universal Trajectory Indicator into a mod zip (HD2 Arsenal, Modocracy):  python build.py -> dist/Universal Trajectory Indicator v<version>.zip
 
 A test version (e.g. 0.1.0-test.1) is also copied to test-builds/, a release to release/. The patch holds the Lua and
 C4's two mode icons (src/c4_*.png, made by tools/c4_icons.py) at a few sizes. Its header comes from Extended Pickup
@@ -22,12 +22,13 @@ SOURCE = os.path.join(HERE, "src", "throwable_arcs.lua")
 ARMOUR = os.path.join(HERE, "src", "armour_table.lua")
 WEAPON_TYPES = os.path.join(HERE, "src", "weapon_types.lua")
 GRENADE_PROFILES = os.path.join(HERE, "src", "grenade_profiles.lua")
+ICON = os.path.join(HERE, "src", "icon.png")   # the mod's thumbnail in the mod manager (tools/make_icon.py)
 ICONS = {"deploy": os.path.join(HERE, "src", "c4_deploy.png"), "detonate": os.path.join(HERE, "src", "c4_detonate.png")}
 ICON_SIZES = (24, 32, 48, 76)    # px: the icon is drawn 26-52 px tall (1080p to 4K), and the UI has no mipmaps
 DIST = os.path.join(HERE, "dist")
 TEST_BUILDS = os.path.join(HERE, "test-builds")
 RELEASE = os.path.join(HERE, "release")
-NAME = "Stratagem and C4 Trajectory"
+NAME = "Universal Trajectory Indicator"
 FOLDER = "Addon"
 RESOURCE = "mods/codex/throwable_arcs"
 ARCHIVE = "9ba626afa44a3aa3.patch_0"
@@ -36,9 +37,10 @@ MANIFEST = {
     "Version": 1,
     "Guid": "7d2c9b4e-31a8-4f6c-b0e5-9a4f2d6c8e17",
     "Name": NAME,
-    "Description": "Shows where a stratagem ball, C4 charge, grenade or falling weapon round will fly while you aim it, "
-                   "an aim circle for rifles with no third-person crosshair, and C4's mode by the crosshair. "
-                   "Requires Chef Shared Loader.",
+    "Description": "Formerly Stratagem and C4 Trajectory. Shows where a stratagem ball, C4 charge, grenade or weapon round "
+                   "will fly while you aim it, an aim circle for rifles with no third-person crosshair, and C4's mode by "
+                   "the crosshair. Requires Chef Shared Loader.",
+    "IconPath": "icon.png",
     "Options": [{"Name": NAME, "Description": "Requires Chef Shared Loader.", "Include": [FOLDER]}],
 }
 
@@ -63,12 +65,13 @@ def strip_development_tracing(source):
     return source
 
 
-def built_source():
-    """The mod's Lua with the armour table in its "@ARMOUR@" slot and the icons' textures in "@ICONS@"."""
+def built_source(development=False):
+    """The mod's Lua with the armour table in its "@ARMOUR@" slot and the icons' textures in "@ICONS@".
+    A release leaves out the development tracing, unless asked for it (the tests)."""
     with open(SOURCE, encoding="utf-8") as f:
         source = f.read()
     version = re.search(r"local VERSION = '([^']+)'", source).group(1)
-    if '-test.' not in version:
+    if '-test.' not in version and not development:
         source = strip_development_tracing(source)
     with open(ARMOUR, encoding="utf-8") as f:
         armour = f.read()
@@ -163,6 +166,7 @@ def build():
     with open(os.path.join(out_dir, "manifest.json"), "w", encoding="utf-8") as f:
         json.dump(MANIFEST, f, indent=2)
         f.write("\n")
+    shutil.copyfile(ICON, os.path.join(out_dir, "icon.png"))
     shutil.copyfile(os.path.join(HERE, "THIRD_PARTY_NOTICES.txt"), os.path.join(out_dir, "THIRD_PARTY_NOTICES.txt"))
     zip_path = out_dir + ".zip"
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as z:

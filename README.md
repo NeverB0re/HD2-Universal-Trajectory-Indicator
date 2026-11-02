@@ -1,6 +1,7 @@
-# Stratagem and C4 Trajectory
+# Universal Trajectory Indicator
 
-(Called Throwable Arcs until 1.0.1.)
+(Called Stratagem and C4 Trajectory until 1.1.0, Throwable Arcs until 1.0.1. The mod's resource name, `mods/codex/throwable_arcs`,
+its manifest Guid and its log, `throwable_arcs.log`, stay: settings and learned throws are saved under them.)
 
 A **HELLDIVERS 2** mod that draws where your throw or shot will fly while you aim it:
 
@@ -9,8 +10,10 @@ A **HELLDIVERS 2** mod that draws where your throw or shot will fly while you ai
 - **C4:** while you aim it with right mouse in DEPLOY mode, the same arc shows where the charge goes: standing,
   crouched, prone, sliding, diving, and from a vehicle's passenger seats.
 - **C4 mode icon:** while C4 is in your hand, the game's DEPLOY or DETONATE icon sits beside the crosshair, so you
-  always know whether you hold a charge or the detonator (in a vehicle, only while you aim). It can be turned off in
-  the options menu (F9 > Stratagem and C4 Trajectory), for players whose HUD mod already shows it.
+  always know whether you hold a charge or the detonator (in a vehicle, only while you aim).
+
+Every feature and every weapon has its own switch in the options menu (F9 > Universal Trajectory Indicator), in folded
+sections on Chef Shared Loader 1.4.0 or newer.
 
 The arc is a line in the 3D world: walls and ground hide it, so the point where it disappears into the terrain is
 where the throw lands. It starts where your hand lets go and follows your armour: Servo-Assisted and Desert Stormer
@@ -28,27 +31,34 @@ rebound in the game's settings aren't followed: the mod reads the mouse buttons 
 green). It isn't anti-aliasing or the map's fog, and the exact cause is unknown. The arc is green by default since
 1.0.4, which seems to keep its colour; if you find what causes it, please open an issue.
 
-**Weapons (1.1.0):** while you aim a weapon whose round falls, in third person and not prone, its path from the
-muzzle: grenade launchers (GL-21, GL-28, GL-52, GL-15), GP-31, GP-20 Ultimatum, P-34 Breacher, CB-9, SG-8P Punisher
-Plasma, the One-Two's launcher, RL-77, GR-8, EAT-17, EAT-700, EAT-411, PLAS-45 Epoch. The rounds' speed, drag and gravity
-are the game's data from the Helldivers Wiki; one drag law fits them all (`a = -4.7e-4 * drag * caliber^2 / mass *
-|v| * v`, fitted on tracked rounds). The arc follows where the weapon points (the game's aim circle).
+**Weapons:** while you aim a weapon whose round falls, its path from the muzzle: grenade launchers (GL-21, GL-28, GL-52,
+GL-15), GP-31, GP-20 Ultimatum, P-34 Breacher, CB-9, SG-8P Punisher Plasma, the One-Two's launcher, RL-77, GR-8, EAT-17,
+EAT-700, EAT-411, PLAS-45 Epoch. The rounds' speed, drag and gravity are the game's data from the Helldivers Wiki; one
+drag law fits them all (`a = -4.7e-4 * drag * caliber^2 / mass * |v| * v`, fitted on tracked rounds). The direction is
+read from the game: the arc runs from the muzzle to the point in my helldiver's network field `bdc1cb8a`, the point the
+weapon is aimed at, with no corrections per weapon, stance or distance. Evidence: [CROSSHAIR_AIM_FINDINGS.md](CROSSHAIR_AIM_FINDINGS.md).
+In first person (an option, off by default) the same field is read 0.04 s ahead, as it arrives that late.
 
-**Grenades (1.1.0):** while you hold G, or aim or cook a grenade drawn with its key, its arc. The grenade in hand is
+**Aim circle:** a ring like the game's for the APW-1, R-40 Sightliner and AMW-20 Apex, which have no third-person
+crosshair: at the same point, in the hand or aimed. Not on the ship, in the hellpod or seated in a vehicle (unless
+aiming from it).
+
+**First-person camera mods** (First Person Camera, Nexus 17827): not tested. The game goes on aiming from its own camera,
+so the field holds; a moved camera is noticed (`AIMING.camera_moved`) and treated as third person.
+
+**Grenades:** while you hold G, or aim or cook a grenade drawn with its key, its arc. The grenade in hand is
 told by its unit's kind; each kind's throw (speed, lift, yaw, start, from your throws; drag fixed) is learned and kept
 (`chef.save_table`), with several kinds measured to start. Guided Seekers get no arc.
-
-Weapon and grenade arcs are new and not fully polished: more checking and fixes are needed.
 
 Works with HD2 Transmog (the throw-range perk is read from the armour you really wear) and with mods that only change
 textures. Other mods that put another armour's model on you may hide the perk (the arc is then drawn without it).
 
-Requires **Chef Shared Loader** 1.2 or newer (Nexus 17760). The mod only reads the game and draws; it never changes
-anything in the game.
+Requires **Chef Shared Loader** 1.2 or newer (Nexus 17760), 1.4 or newer for the folded settings. The mod only reads the
+game and draws; it never changes anything in the game.
 
 ## Install
 
-Add `release/Stratagem and C4 Trajectory v<version>.zip` in your mod manager (HD2 Arsenal / HD2 Mod Manager) next to Chef Shared
+Add `release/Universal Trajectory Indicator v<version>.zip` in your mod manager (HD2 Arsenal / HD2 Mod Manager) next to Chef Shared
 Loader and enable both.
 
 ## Layout
@@ -58,7 +68,8 @@ Loader and enable both.
 | `src/throwable_arcs.lua` | The mod (PUC Lua 5.1, runs inside Chef Shared Loader). `VERSION` is set here. |
 | `src/armour_table.lua` | Every named body armour: its throw-range bonus and its unit kinds, to tell the armour you wear. |
 | `src/c4_deploy.png`, `src/c4_detonate.png` | C4's mode icons (from the game's HUD atlas; `tools/c4_icons.py`). |
-| `build.py` | Builds `dist/Stratagem and C4 Trajectory v<VERSION>.zip`; a release is copied to `release/`, a test version to `test-builds/`. |
+| `src/icon.png` | The thumbnail in the mod manager (`tools/make_icon.py`). |
+| `build.py` | Builds `dist/Universal Trajectory Indicator v<VERSION>.zip`; a release is copied to `release/`, a test version to `test-builds/`. |
 | `tests/test_throwable_arcs.py` | Runs the mod against a fake loader (needs `lupa`). |
 | `PLAN.md` | The design notes and measurements from the test builds (Korean). |
 | `probe/` | Engine Probe, the test addon used to find what the game lets a mod read. |
@@ -68,15 +79,9 @@ Loader and enable both.
 
 ## Working on it
 
-Current completion work and validation boundaries: [DEVELOPMENT_STEPS.md](DEVELOPMENT_STEPS.md).
-`1.1.1-test.14` restores bounded development-only new-unit GR-8 discovery from the old test.3-6 approach.
-The missing GR-8 entry in the recent projectile allowlist was not proof that no trackable unit exists. Candidate
-identity remains unverified until actual flight records are examined. No trajectory coefficient changes here;
-test.13's FRV GL-21 candidate and other contexts are retained. All 152 offline tests pass, and stable builds now
-strip both development collectors and their hooks automatically. See [WEAPON_MUZZLES.md](WEAPON_MUZZLES.md) and
-[NATIVE_PROJECTILE_RESEARCH.md](NATIVE_PROJECTILE_RESEARCH.md) for evidence and the two-shot capture check. Grenade fitting and saved
-calibration are unchanged from the user-accepted test.4. Existing stratagem/C4 behavior, native
-grenade profiles and automatic learning remain.
+Start with [HANDOVER.md](HANDOVER.md). Stable builds strip the development collectors and their hooks automatically;
+a `-test.` version keeps them. See [WEAPON_MUZZLES.md](WEAPON_MUZZLES.md) and
+[NATIVE_PROJECTILE_RESEARCH.md](NATIVE_PROJECTILE_RESEARCH.md) for the muzzle and round evidence.
 
 ```bash
 python -m pip install lupa

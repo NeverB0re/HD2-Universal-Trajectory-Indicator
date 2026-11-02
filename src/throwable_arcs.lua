@@ -1,5 +1,5 @@
 -- HD2-Addon: mods/codex/throwable_arcs
--- Stratagem and C4 Trajectory (Throwable Arcs until 1.0.1): while a stratagem ball is in my hand and left mouse is held, or C4 is aimed with right mouse, draws
+-- Universal Trajectory Indicator (Stratagem and C4 Trajectory until 1.1.0, Throwable Arcs until 1.0.1): while a stratagem ball is in my hand and left mouse is held, or C4 is aimed with right mouse, draws
 -- where it will fly. The arc is a world line: the game hides it behind walls and ground, so where it goes into the
 -- ground is where it lands (the terrain can't be asked). Below native Render Scale the game clips the 3D scene's drawing
 -- to a corner of the screen when the game's anti-aliasing is off (with it on, it shows whole). The numbers are measured
@@ -9,7 +9,7 @@
 -- Transmog's catalog (Nexus 16633).
 local chef = ...
 local M = {}
-local VERSION = '1.1.1-test.c8'
+local VERSION = '1.2.0'
 
 if chef.has and chef.has('own_log') then chef.own_log('throwable_arcs') end
 local function log(fmt, ...) chef.log(fmt, ...) end
@@ -789,7 +789,7 @@ end
 local WEAPON_K, WEAPON_LIFT, WEAPON_FROM = 4.7e-4, math.rad(0.6), { 1.3, -0.18, -0.35 }
 local WEAPON_STEP = 1 / 120      -- s per step of the flight
 local MUZZLE, SEG, SEG_FAR, MOST_POINTS = 0.45, 0.66, 0.015, 800   -- MUZZLE is only the unavailable-node fallback now
-local AIMING = { HELD_KEEP = 0.8, circle_on = true, first_person = false }
+local AIMING = { HELD_KEEP = 0.8, circle_on = true, first_person = false, stratagem_on = true, c4_on = true }
 local SIDE_CARRY = 0.5
 -- First person: a nearby camera at the weapon's sight; root distance is only a compatibility fallback. Actual hand
 -- proximity can identify a held weapon despite a lagging barrel while prone; without the hand, retain HELD_ALONG.
@@ -1183,7 +1183,8 @@ AIMING.camera_moved = (function()
 end)()
 
 -- Those rifles show their circle whenever they are in my hand, aimed or not: looked for five times a second, at the hand
--- (a weapon's root is at the grip), not with a throwable out.
+-- (a weapon's root is at the grip), not with a throwable out. Not seated in a vehicle, unless aiming from it: the game's
+-- crosshairs show only then.
 AIMING.idle_circle = (function()
   local kind, unit, next_look = nil, nil, 0
   return function(c)
@@ -1195,12 +1196,13 @@ AIMING.idle_circle = (function()
       if hand and grip ~= 40 and grip ~= 41 and grip ~= 42 then
         local best
         for _, it in ipairs(weapon_watch.items) do
-          if WEAPONS[it.kind].circle and chef.unit_alive(it.unit) then
+          if WEAPONS[it.kind].circle and not WEAPONS[it.kind].off and chef.unit_alive(it.unit) then
             local x, y, z = chef.unit_position(it.unit)
             local d = x and (x - hand[1]) ^ 2 + (y - hand[2]) ^ 2 + (z - hand[3]) ^ 2
             if d and d <= 0.35 * 0.35 and (not best or d < best) then best, kind, unit = d, it.kind, it.unit end
           end
         end
+        if unit and in_vehicle() then kind, unit = nil, nil end
       end
     end
     if not (unit and chef.unit_alive(unit)) then return nil end
@@ -2133,7 +2135,7 @@ local function weapon_aimed(c)
   end
   local kind, u = held_weapon(c)
   if kind and WEAPONS[kind].ub and not underbarrel_on() then kind = nil end     -- (its rifle: no arc)
-  if kind and not (WEAPONS[kind].circle and AIMING.circle_on or not WEAPONS[kind].circle and weapon_arcs) then
+  if kind and (WEAPONS[kind].off or not (WEAPONS[kind].circle and AIMING.circle_on or not WEAPONS[kind].circle and weapon_arcs)) then
     kind, held_miss = nil, nil
   end
   if kind then
@@ -2180,29 +2182,42 @@ if type(ICONS) == 'table' and chef.texture_sizes then
 end
 local show_icon = true
 if chef.has and chef.has('menu') then
-  chef.title('Stratagem and C4 Trajectory')
-  arc_color = chef.option('arc_color', { type = 'choice', label = 'Arc colour',
+  chef.title('Universal Trajectory Indicator')
+  -- Rows in folded sections on a loader that has them (Chef 1.4.0), one flat list on an older one.
+  local headed = chef.has('option_headings')
+  local function heading(text) return headed and text or nil end
+  local function toggle(id, label, default, set, section)
+    local v = chef.option(id, { type = 'toggle', label = label, default = default, heading = heading(section) })
+    if v == nil then v = default end
+    set(v)
+    chef.on_change(id, function(value) set(value == true) end)
+  end
+  arc_color = chef.option('arc_color', { type = 'choice', label = 'Arc colour', heading = heading('Arc look'),
                                          choices = { 'Green', 'White', 'Blue', 'Red' }, default = 1 })
   chef.on_change('arc_color', function(v) arc_color = v end)
   arc_width = chef.option('arc_width', { type = 'slider', label = 'Arc width', min = 1, max = 7, step = 1, default = 3 })
   chef.on_change('arc_width', function(v) arc_width = v end)
-  arc_solid = chef.option('arc_solid', { type = 'toggle', label = 'Solid arc (no dashes)', default = false }) == true
-  chef.on_change('arc_solid', function(v) arc_solid = v == true end)
-  show_icon = chef.option('c4_icon', { type = 'toggle', label = 'C4 mode icon by the crosshair', default = true }) ~= false
-  chef.on_change('c4_icon', function(v) show_icon = v ~= false end)
-  weapon_arcs = chef.option('weapon_arcs', { type = 'toggle', label = 'Weapon arcs (grenade launchers, rockets...)',
-                                             default = true }) ~= false
-  chef.on_change('weapon_arcs', function(v) weapon_arcs = v ~= false end)
-  AIMING.first_person = chef.option('weapon_arcs_first_person', { type = 'toggle', label = 'Weapon arcs in first person too',
-                                                                  default = false }) == true
-  chef.on_change('weapon_arcs_first_person', function(v) AIMING.first_person = v == true end)
-  AIMING.circle_on = chef.option('aim_circle', { type = 'toggle', label = 'Aim circle for rifles with no third-person crosshair',
-                                                 default = true }) ~= false
-  chef.on_change('aim_circle', function(v) AIMING.circle_on = v ~= false end)
-  grenade.on = chef.option('grenade_arcs', { type = 'toggle', label = 'Grenade arcs (G held, or one in hand aimed)',
-                                            default = true })
-               ~= false
-  chef.on_change('grenade_arcs', function(v) grenade.on = v ~= false end)
+  toggle('arc_solid', 'Solid arc (no dashes)', false, function(v) arc_solid = v end)
+  toggle('stratagem_arcs', 'Stratagem arcs', true, function(v) AIMING.stratagem_on = v end, 'Stratagems, C4 and grenades')
+  toggle('c4_arcs', 'C4 arcs', true, function(v) AIMING.c4_on = v end)
+  toggle('c4_icon', 'C4 mode icon by the crosshair', true, function(v) show_icon = v end)
+  toggle('grenade_arcs', 'Grenade arcs (G held, or one in hand aimed)', true, function(v) grenade.on = v end)
+  toggle('weapon_arcs', 'All weapon arcs', true, function(v) weapon_arcs = v end, 'Weapon arcs')
+  toggle('weapon_arcs_first_person', 'Arcs in first person too', false, function(v) AIMING.first_person = v end)
+  local rows = {}
+  for kind in pairs(WEAPONS) do rows[#rows + 1] = kind end
+  table.sort(rows, function(a, b) return WEAPONS[a][5] < WEAPONS[b][5] end)
+  local function weapon_rows(circle)
+    for _, kind in ipairs(rows) do
+      local w = WEAPONS[kind]
+      if (w.circle == true) == circle then
+        toggle('weapon_' .. kind, w[5], true, function(v) w.off = not v end)
+      end
+    end
+  end
+  weapon_rows(false)
+  toggle('aim_circle', 'All aim circles', true, function(v) AIMING.circle_on = v end, 'Aim circle for rifles with no crosshair')
+  weapon_rows(true)
 end
 local icon_mode, icon_next = nil, 0
 
@@ -2373,7 +2388,7 @@ local said_world = nil
 function M.update(dt)
   if said_world == nil then
     said_world = false
-    log('Stratagem and C4 Trajectory %s, loader %s, api %s', VERSION, tostring(chef.loader_version), tostring(chef.api))
+    log('Universal Trajectory Indicator %s, loader %s, api %s', VERSION, tostring(chef.loader_version), tostring(chef.api))
   end
   local c = chef.camera()
   if not (chef.world() and c) then return end
@@ -2398,7 +2413,10 @@ function M.update(dt)
   weapon_diagnostic.vehicle(c, weapon, muzzle, weapon_unit, weapon_kind)
   weapon_diagnostic.update(c, weapon, muzzle, aim, weapon_unit, weapon_kind, aim_mode)
   local nade = grenade.update(c, not (aiming or c4_aim or h or (weapon and aim_down)))
-  if aiming then
+  local c4_arc = not aiming and (c4_aim or (h and h.c4))
+  if (aiming or c4_aim or h) and not (c4_arc and AIMING.c4_on or not c4_arc and AIMING.stratagem_on) then
+    clear_arc()
+  elseif aiming then
     draw_arc(c, false, release_point(c, ball, false))
   elseif c4_aim then
     draw_arc(c, true, release_point(c, c4_det, true))
