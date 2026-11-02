@@ -522,7 +522,7 @@ class ArcTest(unittest.TestCase):
                 self.fake['down']['g'] = True
                 self.frames(3)
                 line = self.lines()[2]            # centre strand: no width offset
-                speed = (line[3] - line[0]) / .03 / math.cos(math.radians(35))
+                speed = (line[3] - line[0]) / .06 / math.cos(math.radians(35))   # a dash: two steps
                 self.assertAlmostEqual(speed, expected, delta=.02)
 
     def test_grenade_origin_follows_the_actual_low_hand_despite_legacy_standing_samples(self):
@@ -810,7 +810,7 @@ class ArcTest(unittest.TestCase):
     def test_the_arc_starts_where_the_ball_is_let_go_and_goes_on_below_my_feet(self):
         self.aim(10)
         lines = self.lines()
-        self.assertEqual(len(lines) % 3, 0, "3 lines side by side per segment")
+        self.assertEqual(len(lines) % 5, 0, "5 lines side by side per dash")
         first = lines[1][:3]                        # the middle one
         self.assertAlmostEqual(first[0], -0.05, delta=0.02)
         self.assertAlmostEqual(first[1], -0.3, delta=0.02)
@@ -1490,10 +1490,10 @@ class ArcTest(unittest.TestCase):
         self.assertGreater(self.far_end() / plain, 1.08)
 
     def drawn_speed(self, pitch):
-        """the throw speed the arc was drawn with: the first segment's run along the view (it looks along x), per step
+        """the throw speed the arc was drawn with: the first dash's run (two steps) along the view (it looks along x), per step
         (the first: past the top, segments are half a step)"""
         l = self.lines()[0]
-        return (l[3] - l[0]) / 0.03 / math.cos(math.radians(pitch))
+        return (l[3] - l[0]) / 0.06 / math.cos(math.radians(pitch))
 
     def test_the_falling_part_is_dashed_finer(self):
         self.aim(30)
@@ -1598,9 +1598,9 @@ class ArcTest(unittest.TestCase):
         muzzle = (1.8 + 0.45 * math.cos(wp), -0.2, 1.2 + 0.45 * math.sin(wp))
         for got, want in zip(first[:3], muzzle):
             self.assertAlmostEqual(got, want, delta=0.05)
-        # dashed as the stratagem arc: points 0.66 m apart near me
+        # dashed as the stratagem arc: points 0.66 m apart near me, a dash starting every three of them
         near = sorted({round(l[0], 2) for l in lines if l[0] < 20})
-        self.assertAlmostEqual(math.hypot(near[1] - near[0], (near[1] - near[0]) * math.tan(p)), 0.66, delta=0.05)
+        self.assertAlmostEqual(math.hypot(near[1] - near[0], (near[1] - near[0]) * math.tan(p)), 3 * 0.66, delta=0.05)
         # comes down where the drag law says (the round at 10 degrees), well short of a drag-free flight
         down = [l for l in lines if l[2] >= 0 >= l[5]][0]
         want = self.flight(100, 1, 38.4, 10, (muzzle[0], muzzle[2]))
@@ -2998,6 +2998,16 @@ class ArcTest(unittest.TestCase):
         self.assertEqual(normal, 5 * thin)
         self.assertEqual(thick, 9 * thin)
 
+    def test_a_render_size_of_nothing_in_the_settings_leaves_the_arc_drawn(self):
+        self.lua.eval("function(f) f.settings['render_settings.render_resolution'] = { 0, 0 } end")(self.fake)
+        self.weapon_in_hand(self.GL)
+        self.fake['mouse']['right'] = True
+        self.frames(2)
+        self.assertGreater(len(self.lines()), 20)
+        for line in self.lines():
+            for v in line:
+                self.assertTrue(math.isfinite(v), 'the loader drops a line that is not finite')
+
     def test_a_solid_arc_has_no_gaps(self):
         self.weapon_in_hand(self.GL)
         self.fake['mouse']['right'] = True
@@ -3006,7 +3016,7 @@ class ArcTest(unittest.TestCase):
         dashed = len(self.lines())
         self.fake.changes['arc_solid'](True)
         self.frames(1)
-        self.assertAlmostEqual(len(self.lines()) / dashed, 3 / 2, delta=.03, msg='2 on, 1 off when dashed')
+        self.assertAlmostEqual(len(self.lines()) / dashed, 3, delta=.05, msg='one line a segment, or one a dash of 3')
         self.fake.changes['arc_solid'](False)
         self.frames(1)
         self.assertEqual(len(self.lines()), dashed)

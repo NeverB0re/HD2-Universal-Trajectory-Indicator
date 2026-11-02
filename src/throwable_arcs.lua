@@ -724,25 +724,26 @@ local function path(c, c4, ox, oy, oz)
   return pts
 end
 
--- the arc dashed (segment i drawn unless it falls in a gap), each drawn segment as lines side by side (offsets: px off
--- its middle), across the view
+-- the arc dashed (DASH segments drawn, GAP left out), each dash as lines side by side (offsets: px off its middle), across
+-- the view. A dash is one straight line, not one per segment: half the engine's line calls (a GR-8's arc at the default
+-- width: 785 a frame, now 395), and the path strays well under a centimetre from a line over DASH segments.
 local function world_strip(c, pts, col, px_angle, offsets)
-  for i = 2, #pts do
-    if arc_solid or (i - 2) % (DASH + GAP) < DASH then
-      local p, q = pts[i - 1], pts[i]
-      local dx, dy, dz = q[1] - p[1], q[2] - p[2], q[3] - p[3]
-      local mx, my, mz = (p[1] + q[1]) / 2 - c.x, (p[2] + q[2]) / 2 - c.y, (p[3] + q[3]) / 2 - c.z
-      local nx, ny, nz = dy * mz - dz * my, dz * mx - dx * mz, dx * my - dy * mx
-      local nl = math.sqrt(nx * nx + ny * ny + nz * nz)
-      if nl > 1e-9 then
-        -- each end set off by its own distance (1.1.0-test.3: one offset from the middle made a segment going away
-        -- from the camera, as a weapon's does, fan out into loose strands)
-        local kp = math.sqrt((p[1] - c.x) ^ 2 + (p[2] - c.y) ^ 2 + (p[3] - c.z) ^ 2) * px_angle / nl
-        local kq = math.sqrt((q[1] - c.x) ^ 2 + (q[2] - c.y) ^ 2 + (q[3] - c.z) ^ 2) * px_angle / nl
-        for _, o in ipairs(offsets) do
-          chef.line(p[1] + nx * kp * o, p[2] + ny * kp * o, p[3] + nz * kp * o,
-                    q[1] + nx * kq * o, q[2] + ny * kq * o, q[3] + nz * kq * o, col)
-        end
+  local n = #pts
+  local along, every = arc_solid and 1 or DASH, arc_solid and 1 or DASH + GAP
+  for i = 1, n - 1, every do
+    local p, q = pts[i], pts[math.min(i + along, n)]
+    local dx, dy, dz = q[1] - p[1], q[2] - p[2], q[3] - p[3]
+    local mx, my, mz = (p[1] + q[1]) / 2 - c.x, (p[2] + q[2]) / 2 - c.y, (p[3] + q[3]) / 2 - c.z
+    local nx, ny, nz = dy * mz - dz * my, dz * mx - dx * mz, dx * my - dy * mx
+    local nl = math.sqrt(nx * nx + ny * ny + nz * nz)
+    if nl > 1e-9 then
+      -- each end set off by its own distance (1.1.0-test.3: one offset from the middle made a segment going away
+      -- from the camera, as a weapon's does, fan out into loose strands)
+      local kp = math.sqrt((p[1] - c.x) ^ 2 + (p[2] - c.y) ^ 2 + (p[3] - c.z) ^ 2) * px_angle / nl
+      local kq = math.sqrt((q[1] - c.x) ^ 2 + (q[2] - c.y) ^ 2 + (q[3] - c.z) ^ 2) * px_angle / nl
+      for _, o in ipairs(offsets) do
+        chef.line(p[1] + nx * kp * o, p[2] + ny * kp * o, p[3] + nz * kp * o,
+                  q[1] + nx * kq * o, q[2] + ny * kq * o, q[3] + nz * kq * o, col)
       end
     end
   end
@@ -756,7 +757,7 @@ local function draw_points(c, pts)
     scale_next = now() + SCALE_EVERY
     local r = chef.setting('render_settings.render_resolution')
     local rh = type(r) == 'table' and tonumber(r[2])
-    render_scale = (rh and sh and sh > 0) and math.min(1, rh / sh) or 1
+    render_scale = (rh and rh > 0 and sh and sh > 0) and math.min(1, rh / sh) or 1
   end
   local px_angle = (tonumber(c.fov) or 0.96) / math.max(1, sh or 1080)
   local offsets = {}
