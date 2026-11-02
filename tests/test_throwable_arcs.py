@@ -109,7 +109,14 @@ chef = {
     return v
   end,
   on_change = function(id, fn) fake.changes[id] = fn end,
-  rect = function(...) fake.shapes[#fake.shapes + 1] = 'rect' end,
+  rect = function(x, y, w, h, c, layer)
+    fake.shapes[#fake.shapes + 1] = 'rect'
+    fake.rects[#fake.rects + 1] = { x = x, y = y, w = w, h = h }
+  end,
+  world_to_screen = function(x, y, z)
+    if fake.behind then return nil end
+    return x, y
+  end,
   triangle = function(...) fake.shapes[#fake.shapes + 1] = 'triangle' end,
   circle = function(...) fake.shapes[#fake.shapes + 1] = 'circle' end,
   ring = function(...) fake.shapes[#fake.shapes + 1] = 'ring' end,
@@ -151,7 +158,7 @@ function fake.frame(M, dt)
       for _, u in ipairs(fake.units) do if w.kinds[u.kind] then w.items[#w.items + 1] = { unit = u, kind = u.kind } end end
     end
   end
-  fake.lines, fake.shapes = {}, {}
+  fake.lines, fake.shapes, fake.rects = {}, {}, {}
   M.update(dt)
   fake.pressed, fake.wheel = {}, 0
 end
@@ -1900,7 +1907,7 @@ class ArcTest(unittest.TestCase):
         self.fake['mouse']['left'] = True
         self.frames(25)
         self.assertEqual(self.logs().count(' shot t='), 4)
-        self.assertIn('profile=vehicle/FRV-local fixed=true', self.logs())
+        self.assertIn('direction-mode=', self.logs())
 
     def test_unprofiled_weapon_standing_shots_do_not_exhaust_prone_evidence(self):
         gun = self.weapon_in_hand('f49227a0630a3f7f')
@@ -2029,7 +2036,7 @@ class ArcTest(unittest.TestCase):
     def test_stable_source_excludes_development_collectors_and_hooks(self):
         source = ta_build.strip_development_tracing(ta_build.built_source())
         for token in ('weapon_diagnostic', 'candidate-summary', 'GR-8 discovery armed', 'vehicle aim', 'body_snapshot',
-                      'aim_probe', 'aim quick', 'aim pre'):
+                      'aim_probe', 'aim quick', 'aim pre', 'unknown_weapon', 'AIM_PROFILES', 'weapon_profile'):
             self.assertNotIn(token, source)
         self.M = self.lua.execute(source, self.lua.globals().chef)
         self.weapon_in_hand('9f80d67a12a7e40f')
@@ -2540,6 +2547,178 @@ class ArcTest(unittest.TestCase):
             self.fake['mouse']['left'] = False
             self.frames(25)
         self.assertEqual(self.logs().count(' shot t='), 6, 'three more while it turned, and no more than three')
+
+    AMR, APEX = '89c5493e08ca4207', 'b814eece17533bc4'
+
+    def dots(self):
+        return [(r.x, r.y, r.w, r.h) for r in self.fake.rects.values()]
+
+    def test_a_rifle_with_no_crosshair_gets_a_dot_where_the_round_is_going_and_no_arc(self):
+        for kind in (self.AMR, self.APEX):
+            with self.subTest(kind=kind):
+                self.setUp()
+                gun = self.weapon_in_hand(kind)
+                self.weapon_nodes(gun, (2.25, -.2, 1.2))
+                self.game_aim(102.25, 30., 3.)
+                self.game_weapon_hit(40., 2., 1.)
+                self.fake['mouse']['right'] = True
+                self.frames(3)
+                self.assertEqual([l for l in self.lines() if l[0] > -9000], [], 'no arc')
+                dots = self.dots()
+                self.assertEqual(len(dots), 2, 'a dot and its dark edge')
+                x, y, w, h = dots[1]
+                self.assertAlmostEqual(x + w / 2, 40., delta=.01)
+                self.assertAlmostEqual(y + h / 2, 2., delta=.01)
+                self.assertAlmostEqual(w, round(1200 * .004), delta=.01)
+                self.M.shutdown()
+
+    def test_the_dot_moves_with_the_field_and_goes_with_the_aiming(self):
+        gun = self.weapon_in_hand(self.AMR)
+        self.weapon_nodes(gun, (2.25, -.2, 1.2))
+        self.game_aim(102.25, 30., 3.)
+        self.game_weapon_hit(40., 2., 1.)
+        self.fake['mouse']['right'] = True
+        self.frames(3)
+        self.lua.eval("function(f) f.weapon_point = { 60, 5, 1 } end")(self.fake)
+        self.frames(1)
+        x, y, w, h = self.dots()[1]
+        self.assertAlmostEqual(x + w / 2, 60., delta=.01)
+        self.fake['mouse']['right'] = False
+        self.frames(1)
+        self.assertEqual(self.dots(), [])
+
+    def test_no_dot_for_a_point_behind_the_screen_or_in_first_person(self):
+        gun = self.weapon_in_hand(self.AMR)
+        self.weapon_nodes(gun, (2.25, -.2, 1.2))
+        self.game_aim(102.25, 30., 3.)
+        self.game_weapon_hit(40., 2., 1.)
+        self.fake['mouse']['right'] = True
+        self.lua.eval("function(f) f.behind = true end")(self.fake)
+        self.frames(2)
+        self.assertEqual(self.dots(), [])
+        self.lua.eval("function(f, u) f.behind = false; u.x, u.z = 0.3, 1.8 end")(self.fake, gun)
+        self.frames(2)
+        self.assertEqual(self.dots(), [])
+        self.assertIn('(first person: not drawn)', self.logs())
+
+    def test_the_dot_and_the_weapon_arcs_have_options_of_their_own(self):
+        gun = self.weapon_in_hand(self.AMR)
+        self.weapon_nodes(gun, (2.25, -.2, 1.2))
+        self.game_aim(102.25, 30., 3.)
+        self.fake['mouse']['right'] = True
+        self.fake.changes['weapon_arcs'](False)
+        self.frames(2)
+        self.assertEqual(len(self.dots()), 2, 'weapon arcs off: the dot stays')
+        self.fake.changes['aim_dot'](False)
+        self.frames(2)
+        self.assertEqual(self.dots(), [])
+        self.fake.changes['weapon_arcs'](True)
+        self.frames(2)
+        self.assertEqual(self.dots(), [], 'nor does an arc take its place')
+        self.assertEqual([l for l in self.lines() if l[0] > -9000], [])
+
+    def test_a_weapon_arc_is_kept_with_the_dot_turned_off(self):
+        self.weapon_in_hand(self.GL)
+        self.fake['mouse']['right'] = True
+        self.fake.changes['aim_dot'](False)
+        self.frames(2)
+        self.assertGreater(len(self.lines()), 20)
+
+    def first_person_gl(self):
+        gun = self.weapon_in_hand(self.GL, back=0.1)
+        self.lua.eval("function(u) u.z = 1.8 end")(gun)     # 0.5 m from the camera
+        self.game_aim(102.25, 30., 3.)
+        self.game_weapon_hit(40., 2., 1.)
+        self.fake['mouse']['right'] = True
+        return gun
+
+    def test_weapon_arcs_are_off_in_first_person_unless_asked_for(self):
+        self.first_person_gl()
+        self.frames(3)
+        self.assertEqual(self.lines(), [])
+        self.assertIn('(first person: not drawn)', self.logs())
+
+    def test_with_the_option_a_first_person_arc_starts_at_the_camera_and_goes_to_the_point(self):
+        self.fake.opts['weapon_arcs_first_person'] = True
+        self.M = self.load()
+        self.first_person_gl()
+        self.frames(3)
+        self.assertGreater(len(self.lines()), 20)
+        self.assertIn('GL-21 Grenade Launcher (first person)', self.logs())
+        cam = (self.fake.cam.x, self.fake.cam.y, self.fake.cam.z)
+        start, way = self.drawn_direction()
+        self.assertLess(math.dist(start, (cam[0] + .3, cam[1], cam[2])), .03)
+        self.assertAlmostEqual(math.degrees(math.atan2(way[1], way[0])),
+                               math.degrees(math.atan2(2 - cam[1], 40 - cam[0] - .3)), delta=.3)
+
+    def test_a_first_person_shot_records_the_muzzle_beside_the_start_drawn(self):
+        self.fake.opts['weapon_arcs_first_person'] = True
+        self.M = self.load()
+        gun = self.first_person_gl()
+        self.weapon_nodes(gun, (0.7, -.2, 1.7))
+        self.frames(2)
+        self.fake['mouse']['left'] = True
+        self.frames(1)
+        self.assertIn('first-person=true', self.logs())
+        self.assertIn('animated-muzzle 0.700000 -0.200000 1.700000', self.logs())
+
+    def test_the_first_person_option_can_change_while_playing(self):
+        self.first_person_gl()
+        self.frames(2)
+        self.assertEqual(self.lines(), [])
+        self.fake.changes['weapon_arcs_first_person'](True)
+        self.frames(2)
+        self.assertGreater(len(self.lines()), 20)
+        self.fake.changes['weapon_arcs_first_person'](False)
+        self.frames(2)
+        self.assertEqual([l for l in self.lines() if l[0] > -9000], [])
+
+    def test_aiming_a_weapon_it_doesnt_know_names_whats_at_my_hand_now_and_then(self):
+        self.lua.eval("function(f) f.me.x = 1.5 end")(self.fake)
+        self.right_hand_at(1.8, -.2, 1.2)
+        rifle = self.add_unit('cccccccccccccccc', 1.8, -.2, 1.2)
+        self.lua.eval("function(u) u.f = { 1, 0, 0 } end")(rifle)
+        self.fake['mouse']['right'] = True
+        self.frames(600)                    # 10 s
+        self.assertIn('cccccccccccccccc:1.000', self.logs())
+        unknown = self.logs().count('aim unknown weapon')
+        self.assertGreater(unknown, 0)
+        self.assertLessEqual(unknown, 4)
+        self.fake['mouse']['right'] = False
+        self.frames(600)
+        self.assertEqual(self.logs().count('aim unknown weapon'), unknown, 'not when not aiming')
+
+    def test_the_arc_width_is_how_many_lines_side_by_side(self):
+        self.weapon_in_hand(self.GL)
+        self.fake['mouse']['right'] = True
+        self.frames(2)
+        normal = len(self.lines())
+        self.fake.changes['arc_width'](1)
+        self.frames(1)
+        thin = len(self.lines())
+        self.fake.changes['arc_width'](5)
+        self.frames(1)
+        thick = len(self.lines())
+        self.assertEqual(normal, 3 * thin, 'three by default, as it always was')
+        self.assertEqual(thick, 5 * thin)
+
+    def test_a_solid_arc_has_no_gaps(self):
+        self.weapon_in_hand(self.GL)
+        self.fake['mouse']['right'] = True
+        self.fake.changes['arc_width'](1)
+        self.frames(2)
+        dashed = len(self.lines())
+        self.fake.changes['arc_solid'](True)
+        self.frames(1)
+        self.assertAlmostEqual(len(self.lines()) / dashed, 3 / 2, delta=.03, msg='2 on, 1 off when dashed')
+        self.fake.changes['arc_solid'](False)
+        self.frames(1)
+        self.assertEqual(len(self.lines()), dashed)
+
+    def test_the_manifest_tells_all_the_mod_does(self):
+        text = ta_build.MANIFEST['Description']
+        for word in ('stratagem', 'C4', 'grenade', 'weapon', 'dot'):
+            self.assertIn(word, text)
 
     def test_all_supported_weapons_use_their_asset_verified_muzzle_names_and_positions(self):
         with open(os.path.join(HERE, 'fixtures', 'weapon_muzzle_nodes.json'), encoding='utf-8') as f:

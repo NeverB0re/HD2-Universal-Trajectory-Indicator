@@ -9,7 +9,7 @@
 -- Transmog's catalog (Nexus 16633).
 local chef = ...
 local M = {}
-local VERSION = '1.1.1-test.c4'
+local VERSION = '1.1.1-test.c5'
 
 if chef.has and chef.has('own_log') then chef.own_log('throwable_arcs') end
 local function log(fmt, ...) chef.log(fmt, ...) end
@@ -652,7 +652,8 @@ end
 -- faint blue, red or green), white (until 1.0.3), blue or red.
 local COLORS = { { 0, 255, 0 }, { 255, 255, 255 }, { 80, 160, 255 }, { 255, 70, 70 } }
 local arc_color = 1
--- The arc is 3 lines a render pixel apart, 3 render pixels wide, at any render scale. The render scale: the game's
+local arc_width, arc_solid = 3, false   -- render pixels wide; solid: no dashes
+-- The arc is arc_width lines a render pixel apart, arc_width render pixels wide, at any render scale. The render scale: the game's
 -- settings file's render resolution over the screen's height, read every SCALE_EVERY s. A white arc came out faint
 -- blue, red or green in parts, at some places and headings only, on any map, at native scale and with anti-aliasing
 -- off alike (1.0.3-test.3 and after); the cause is unknown.
@@ -726,7 +727,7 @@ end
 -- its middle), across the view
 local function world_strip(c, pts, col, px_angle, offsets)
   for i = 2, #pts do
-    if (i - 2) % (DASH + GAP) < DASH then
+    if arc_solid or (i - 2) % (DASH + GAP) < DASH then
       local p, q = pts[i - 1], pts[i]
       local dx, dy, dz = q[1] - p[1], q[2] - p[2], q[3] - p[3]
       local mx, my, mz = (p[1] + q[1]) / 2 - c.x, (p[2] + q[2]) / 2 - c.y, (p[3] + q[3]) / 2 - c.z
@@ -757,7 +758,8 @@ local function draw_points(c, pts)
     render_scale = (rh and sh and sh > 0) and math.min(1, rh / sh) or 1
   end
   local px_angle = (tonumber(c.fov) or 0.96) / math.max(1, sh or 1080)
-  local offsets = { -1 / render_scale, 0, 1 / render_scale }
+  local offsets = {}
+  for i = 1, arc_width do offsets[i] = (i - (arc_width + 1) / 2) / render_scale end
   local col = COLORS[arc_color] or COLORS[1]
   world_strip(c, pts, chef.color(col[1], col[2], col[3], 255), px_angle, offsets)
   drew = true
@@ -774,65 +776,20 @@ local function clear_arc()
 end
 
 -- ------------------------------------------------------------------ weapons
--- 1.1.0: while a weapon whose round falls is aimed, in third person, the round's path. Measured with Weapon Probe 0.1.0
--- (27 tracked rounds of five weapons, WEAPON_ARCS_PLAN.md): the round flies the way the camera looks, WEAPON_LIFT above
--- it, from WEAPON_FROM (m ahead, right and up of the camera), at the weapon's speed plus my velocity; gravity times the
--- weapon's factor, and drag a = -WEAPON_K * drag * caliber^2 / mass * |v| * v, one K for every weapon (fitted per
--- weapon 4.6-4.8e-4; air's 1/2 rho pi/4 in the wiki's units is 4.81e-4). Within 0.73 m RMS of the rounds over 150 m.
+-- While a weapon whose round falls is aimed, the round's path. Its flight, from Weapon Probe 0.1.0 (27 tracked rounds of
+-- five weapons, WEAPON_ARCS_PLAN.md): the weapon's speed plus my velocity; gravity times the weapon's factor, and drag
+-- a = -WEAPON_K * drag * caliber^2 / mass * |v| * v, one K for every weapon (fitted per weapon 4.6-4.8e-4; air's
+-- 1/2 rho pi/4 in the wiki's units is 4.81e-4). Its start and direction: see weapon_aim.
 -- The weapon in hand: while aiming, the one weapon unit near me that points the way the camera looks (held ones
--- 0.998 and more, worn ones 0.8 and less; hand poses don't tell, the CB-9 and the Ultimatum share one). Not drawn in
--- first person, the camera less than FIRST_PERSON m behind my feet (third person: 0.8-2.1 m).
--- test.2: drawn from the muzzle, where the round is first seen (MUZZLE m ahead of the weapon unit, which sits at the
--- grip: 0.4-0.5 m for the GL, the CB-9 and the RL-77 in the probe), and dashed by distance as the stratagem arc is (a
--- point every SEG m, farther apart far off: SEG_FAR of the distance from the camera), not by flight time (a 100 m/s
--- round's dashes were 6 m long).
+-- 0.998 and more, worn ones 0.8 and less; hand poses don't tell, the CB-9 and the Ultimatum share one).
+-- In first person: only with its option, from the camera (there the round leaves from the camera, not the muzzle).
+-- Dashed by distance as the stratagem arc is (a point every SEG m, farther apart far off: SEG_FAR of the distance from
+-- the camera), not by flight time (a 100 m/s round's dashes were 6 m long).
 local WEAPON_K, WEAPON_LIFT, WEAPON_FROM = 4.7e-4, math.rad(0.6), { 1.3, -0.18, -0.35 }
 local WEAPON_STEP = 1 / 120      -- s per step of the flight
 local MUZZLE, SEG, SEG_FAR, MOST_POINTS = 0.45, 0.66, 0.015, 800   -- MUZZLE is only the unavailable-node fallback now
--- Fixed direction profiles. Never learn from camera alignment during play: a vehicle/posture observation must
--- not change the next on-foot shot. Root direction stays live so aim lag and genuine barrel deflection remain.
--- GL-21 profile values are offline medians of recorded flights; see tools/fit_weapon_aim.py and WEAPON_MUZZLES.md.
-local AIMING = { HELD_KEEP = 0.8 }
-AIMING.frames = "@WEAPON_FRAMES@"
-local AIM_OFF, SIDE_CARRY = { 0, 1.5, 'on-foot/unmeasured' }, 0.5
-local AIM_PROFILES = {
-  vehicle = { 0, 1.5, 'vehicle/unmeasured' },
-  frv = { 0, 1.5, 'vehicle/FRV-local' },
-  -- test.9 GR-8 prone snapshot: root-camera yaw -1.35deg at height 0.513m. No tracked round;
-  -- this yaw and the 0.65m band are explicit estimates, not GL-21 data or a fitted GR-8 trajectory.
-  ['9f80d67a12a7e40f'] = {
-    low_height = 0.65,
-    -- bind muzzle XYZ; fixed correction right/up degrees in the weapon frame. Flat reference: test.11 shot 1.
-    frame = { -0.031969439, 0.388560981, 0.165411800, -1.28277, -1.54815 },
-    { -1.35, 1.5, 'on-foot/GR-8-low-root-estimate' }, AIM_OFF, AIM_OFF,
-  },
-  ['02eecd0b1fa49630'] = {
-    frame = { 0, 0.437935799, 0.096126989, -1.85, -0.75 },
-    { -1.84, 0.75, 'on-foot/low-root' },
-    { -0.13, 0.95, 'on-foot/mid-root' },
-    { 0.06, 1.17, 'on-foot/high-root' },
-  },
-}
--- Precompute local direction weights once, never fit or change them when equipping/aiming.
-do
-  for kind, profile in pairs(AIM_PROFILES) do
-    local f = profile.frame
-    if f then
-      local bind = AIMING.frames[kind]
-      if bind then f[1], f[2], f[3] = bind[1], bind[2], bind[3] end
-      local yaw, pitch = math.rad(f[4]), math.rad(f[5])
-      f.r, f.f, f.u = math.sin(yaw) * math.cos(pitch), math.cos(yaw) * math.cos(pitch), math.sin(pitch)
-    end
-  end
-  for kind, f in pairs(AIMING.frames) do
-    -- GL-21 FRV samples: mean local pitch rounds to -1.1deg, mean yaw to zero.
-    -- Other bind rows are geometry only and do not activate an unmeasured FRV correction.
-    if kind == '02eecd0b1fa49630' then
-      local pitch = math.rad(-1.1)
-      f.r, f.f, f.u = 0, math.cos(pitch), math.sin(pitch)
-    end
-  end
-end
+local AIMING = { HELD_KEEP = 0.8, DOT = 0.004, FIRST_PERSON_AHEAD = 0.3, dot_on = true, first_person = false }
+local SIDE_CARRY = 0.5
 -- First person: a nearby camera at the weapon's sight; root distance is only a compatibility fallback. Actual hand
 -- proximity can identify a held weapon despite a lagging barrel while prone; without the hand, retain HELD_ALONG.
 local FIRST_PERSON = 0.9          -- compatibility fallback if the sight node cannot be read
@@ -860,6 +817,10 @@ local WEAPONS = {
   ['e8d5f49ad7780e54'] = { 250, 2, 0.4, 0.6, 'PLAS-45 Epoch', muzzle = { 0.8, 0.12 } },
   -- the One-Two's underbarrel launcher fires the GP-31's round; drawn only while its fire mode selects it (ub)
   ['a955c4ea6f6d4203'] = { 100, 1, 38.4, false, 'AR/GL-21 One-Two (its grenade launcher)', ub = true },
+  -- The game gives these no crosshair in third person, and they hardly drop: a dot where the round is going, no arc
+  -- (filediver: support_weapons/sniper_rifle and sniper_rifle_duo, taken to be the APW-1 and the AMW-20: to be seen).
+  ['89c5493e08ca4207'] = { 0, 0, 0, false, 'APW-1 Anti-Materiel Rifle', dot = true },
+  ['b814eece17533bc4'] = { 0, 0, 0, false, 'AMW-20 Apex', dot = true },
 }
 local weapon_watch
 do
@@ -1000,60 +961,6 @@ local function launch(c, w, mx, my, aim, from)
   return px, py, pz, hx * s + hy * across, hy * s - hx * across, w[1] * math.sin(pitch)
 end
 
--- Torso geometry distinguishes a twisted prone torso from a crouch even when the weapon is lifted.
--- Only two cached node positions, once per frame while a profiled on-foot weapon is aimed. Unknown -> legacy bands.
-local prone_torso = (function()
-  local state = {}
-  return function()
-    if not (me_unit and me and chef.unit_node) then return nil end
-    local t, wid = now(), chef.world_id()
-    if state.unit ~= me_unit or state.world ~= wid then state = { unit = me_unit, world = wid, next = 0 } end
-    if state.at == t then return state.value end
-    state.at, state.value = t, nil
-    if t >= state.next and (not state.hips or not state.chest) then
-      state.next = t + GRIP_RETRY
-      state.hips = state.hips or chef.unit_node(me_unit, 'hips')
-      state.chest = state.chest or chef.unit_node(me_unit, 'chest')
-    end
-    if not (state.hips and state.chest) then return nil end
-    local hx, hy, hz = chef.unit_position(me_unit, state.hips)
-    local cx, cy, cz = chef.unit_position(me_unit, state.chest)
-    if not (hx and cx) then return nil end
-    local dx, dy, dz = cx - hx, cy - hy, cz - hz
-    local length2 = dx * dx + dy * dy + dz * dz
-    if length2 ~= length2 or length2 < 0.01 or length2 > 0.64 then return nil end
-    state.value = hz - me[3] >= -0.15 and hz - me[3] < 0.45 and dz * dz <= 0.64 * length2
-    return state.value
-  end
-end)()
-
--- Select a fixed profile from current geometry, not elapsed aiming time or previous observations.
--- Torso geometry has priority over weapon height; missing torso data uses legacy height bands.
--- No native stance enum is assumed. Vehicle always has its own fallback.
-local function weapon_profile(kind, u)
-  local seated, vehicle_kind, _, up = in_vehicle()
-  if seated and up and up >= 0.35 then
-    if vehicle_kind == 'cc21c7ffd3ebefb9' or vehicle_kind == '2d85bfe3d8717fe5'
-       or vehicle_kind == '9b2140378640432e' then
-      local frame = AIMING.frames[kind]
-      -- Only GL-21 currently has actual FRV flight samples. Keep unmeasured weapons on their old path.
-      if frame and kind == '02eecd0b1fa49630' then return AIM_PROFILES.frv, false, frame end
-    end
-    return AIM_PROFILES.vehicle, false
-  end
-  local profiles = AIM_PROFILES[kind]
-  if profiles and me then
-    local _, _, z = chef.unit_position(u)
-    if z then
-      local height = z - me[3]
-      local prone = prone_torso()
-      if prone == nil then prone = height < (profiles.low_height or 0.5) end
-      return profiles[prone and 1 or (height < 1 and 2 or 3)], prone
-    end
-  end
-  return AIM_OFF
-end
-
 -- My helldiver's network object: my player's object says which it is. Looked for every LOOK s until found, BATCH of my
 -- objects a frame (as host I own thousands), and again with a new helldiver or world. Read only.
 AIMING.avatar = (function()
@@ -1182,8 +1089,21 @@ local function weapon_aim(c, kind, u, muzzle)
     local tx, ty, tz = AIMING.target()
     if AIMING.usable(c, muzzle, 20, 200, tx, ty, tz) then x, y, z, mode = tx, ty, tz, 'aim-target' end
   end
+  AIMING.px, AIMING.py, AIMING.pz = x, y, z
   x, y, z = x - muzzle[1], y - muzzle[2], z - muzzle[3]
   return { math.atan2(y, x), math.atan2(z, math.sqrt(x * x + y * y)) }, mode
+end
+
+-- A dot where the round is going, for the weapons with no crosshair of their own (DOT of the screen's height).
+function AIMING.draw_dot()
+  local sx, sy = chef.world_to_screen(AIMING.px, AIMING.py, AIMING.pz)
+  if not sx then return end
+  local _, h = chef.screen()
+  local size = math.max(3, math.floor(h * AIMING.DOT + 0.5))
+  local col = COLORS[arc_color] or COLORS[1]
+  local layer = (chef.TOP or 0) + 1100      -- over the HUD and the map, under the menus
+  chef.rect(sx - size / 2 - 1, sy - size / 2 - 1, size + 2, size + 2, chef.color(0, 0, 0, 170), layer)
+  chef.rect(sx - size / 2, sy - size / 2, size, size, chef.color(col[1], col[2], col[3], 255), layer + 1)
 end
 
 -- DEVELOPMENT_WEAPON_TRACE_BEGIN
@@ -1250,6 +1170,30 @@ local weapon_diagnostic = (function()
           t, label, c.x, c.y, c.z, c.fx, c.fy, c.fz, muzzle[1], muzzle[2], muzzle[3], target, table.concat(bits, ' '))
     end
   end)()
+  -- test.c5: aiming a weapon the mod doesn't know, what is at my hand, for its kind (the Apex's, the Sightliner's).
+  local unknown_weapon = (function()
+    local times, next_at = 0, 0
+    return function(c, t)
+      if not (aim_down and times < 12 and t >= next_at and me_unit) then return end
+      local hand = right_hand()
+      if not hand then return end
+      times, next_at = times + 1, t + 3
+      local bits = {}
+      for _, unit in ipairs(all_units()) do
+        local kind = chef.unit_kind(unit)
+        if kind and kind ~= '46cab355bd8d4d37' and unit ~= me_unit and chef.unit_alive(unit) then
+          local x, y, z = chef.unit_position(unit)
+          if x and (x - hand[1]) ^ 2 + (y - hand[2]) ^ 2 + (z - hand[3]) ^ 2 < 0.36 then
+            local fx, fy, fz = chef.unit_rotation(unit)
+            if type(fx) == 'number' then
+              bits[#bits + 1] = string.format('%s:%.3f', kind, fx * c.fx + fy * c.fy + fz * c.fz)
+            end
+          end
+        end
+      end
+      log('aim unknown weapon t=%.3f at my hand (kind:along the camera) %s', t, table.concat(bits, ' '))
+    end
+  end)()
   local function vector(label, x, y, z)
     if type(x) == 'number' and type(y) == 'number' and type(z) == 'number' then
       log('weapon direction %d %s %.6f %.6f %.6f', count, label, x, y, z)
@@ -1309,12 +1253,13 @@ local weapon_diagnostic = (function()
   return {
     update = function(c, w, muzzle, aim, u, kind, aim_mode)
       local down, t = chef.mouse_down('left') == true, now()
-      if w and muzzle then aim_probe(c, muzzle, down and not previous, t) end
+      if w and muzzle then aim_probe(c, muzzle, down and not previous, t)
+      elseif not w then unknown_weapon(c, t) end
       if history_unit ~= u or history_world ~= chef.world_id() then history = {} end
       history_unit, history_world = u, chef.world_id()
       -- Restore the old test.3-6 new-unit path for GR-8, without assuming a projectile hash.
       -- One baseline per aiming/equipped unit (six arms/load), then at most six scans per shot; test builds only.
-      if kind ~= '9f80d67a12a7e40f' then discovery = nil
+      if not (kind == '9f80d67a12a7e40f' or (w and w.dot)) then discovery = nil
       elseif not discovery or discovery.unit ~= u or discovery.world ~= chef.world_id() then
         if discovery_arms < 6 and count < 16 then
           discovery_arms = discovery_arms + 1
@@ -1324,17 +1269,15 @@ local weapon_diagnostic = (function()
           log('GR-8 discovery armed %d; new-unit identity remains unverified', discovery_arms)
         end
       end
-      local profile = down and not previous and w and count < 16 and weapon_profile(kind, u)
-      -- The prediction profile is NOT a stance label. Unprofiled weapons (e.g. CB-9) share AIM_OFF
-      -- standing and prone; previously three standing clicks silently exhausted their prone evidence budget.
-      local stance
-      if profile then
-        local torso = prone_torso()
+      -- (only so that the shots of one stance don't use up the records of the others)
+      local stance, key
+      if down and not previous and w and count < 16 then
         local height = select(3, chef.unit_position(u)) - (feet_z or c.z)
-        stance = torso == true and 'prone' or (height < 0.5 and torso == nil and 'prone'
-                  or (height < 1 and 'crouch' or 'standing'))
+        stance = height < 0.5 and 'prone' or (height < 1 and 'crouch' or 'standing')
+        key = kind .. '/' .. stance
+        if in_vehicle() then key = key .. '/vehicle' end
+        if first_person(c, u, w) then key = key .. '/first-person' end
       end
-      local key = profile and (kind .. '/' .. profile[3] .. '/' .. stance)
       local before = history[#history]
       if key and before and before[13] * c.fx + before[14] * c.fy + before[15] * c.fz < 0.99996 then
         key = key .. '/turning'
@@ -1354,6 +1297,8 @@ local weapon_diagnostic = (function()
         local nodes = weapon_nodes(u, w)
         if nodes.muzzle then vector('muzzle-forward', chef.unit_rotation(u, nodes.muzzle)) end
         vector('muzzle-position', muzzle[1], muzzle[2], muzzle[3])
+        local animated = muzzle_of(u, w)     -- (in first person the start drawn isn't the muzzle)
+        if animated then vector('animated-muzzle', animated[1], animated[2], animated[3]) end
         local x, y, z, vx, vy, vz = launch(c, w, mx, my, aim, muzzle)
         vector('predicted-velocity', vx, vy, vz)
         vector('player-velocity', mx, my, 0)
@@ -1368,11 +1313,11 @@ local weapon_diagnostic = (function()
                 count,h.t-t,h[1],h[2],h[3],h[4],h[5],h[6],h[7],h[8],h[9],h[10],h[11],h[12],h[13],h[14],h[15])
           end
         end
-        local off = profile
-        log('weapon direction %d offset-deg %.6f %.6f profile=%s fixed=true direction-mode=%s', count, off[1], off[2], off[3], aim_mode or 'unavailable')
+        log('weapon direction %d direction-mode=%s first-person=%s', count, aim_mode or 'unavailable',
+            tostring(first_person(c, u, w)))
         local seen = setmetatable({}, { __mode = 'k' })
         if watch then for _, it in ipairs(watch.items) do seen[it.unit] = true end end
-        local discover = kind == '9f80d67a12a7e40f' and discovery
+        local discover = (kind == '9f80d67a12a7e40f' or w.dot) and discovery
         sample = { at=t, world=chef.world_id(), kind=rounds[kind], origin=muzzle, speed=w[1],
                    seen=seen, tracks={}, next=0, scans=0, next_scan=0, weapon=u, row=w,
                    discover=discover and true or false, before=discover and discover.before }
@@ -2075,13 +2020,16 @@ end)()
 
 -- the weapon to draw for this frame: its row in WEAPONS and its muzzle, or nil
 local function weapon_aimed(c)
-  if not (weapon_arcs and aim_down) then
+  if not ((weapon_arcs or AIMING.dot_on) and aim_down) then
     said_weapon, held = nil, nil
     weapon_log_at = 0
     return nil
   end
   local kind, u = held_weapon(c)
   if kind and WEAPONS[kind].ub and not underbarrel_on() then kind = nil end     -- (its rifle: no arc)
+  if kind and not (WEAPONS[kind].dot and AIMING.dot_on or not WEAPONS[kind].dot and weapon_arcs) then
+    kind, held_miss = nil, nil
+  end
   if kind then
     local seated, vehicle_kind, _, up = in_vehicle()
     -- Recorded FRV driver hand/root stays 0.46m above feet, versus 0.97-1.15m when a passenger aims.
@@ -2096,14 +2044,19 @@ local function weapon_aimed(c)
     end
   end
   local fp = kind and first_person(c, u, WEAPONS[kind])
-  local said = kind and (WEAPONS[kind][5] .. (fp and ' (first person: not drawn)' or ''))
+  local hidden = fp and (WEAPONS[kind].dot or not AIMING.first_person)
+  local said = kind and (WEAPONS[kind][5] .. (hidden and ' (first person: not drawn)' or (fp and ' (first person)' or '')))
                or ('none' .. (held_miss and ' (' .. held_miss .. ')' or ''))
   if said ~= said_weapon and (kind or held_miss == 'throwable hand pose' or now() >= weapon_log_at) then
     said_weapon = said
     weapon_log_at = now() + 0.5
     log('weapon aimed: %s', said)
   end
-  if not kind or fp then return nil end
+  if not kind or hidden then return nil end
+  if fp then
+    local d = AIMING.FIRST_PERSON_AHEAD
+    return WEAPONS[kind], { c.x + c.fx * d, c.y + c.fy * d, c.z + c.fz * d }, u, kind
+  end
   return WEAPONS[kind], muzzle_of(u, WEAPONS[kind]), u, kind
 end
 
@@ -2129,11 +2082,21 @@ if chef.has and chef.has('menu') then
   arc_color = chef.option('arc_color', { type = 'choice', label = 'Arc colour',
                                          choices = { 'Green', 'White', 'Blue', 'Red' }, default = 1 })
   chef.on_change('arc_color', function(v) arc_color = v end)
+  arc_width = chef.option('arc_width', { type = 'slider', label = 'Arc width', min = 1, max = 7, step = 1, default = 3 })
+  chef.on_change('arc_width', function(v) arc_width = v end)
+  arc_solid = chef.option('arc_solid', { type = 'toggle', label = 'Solid arc (no dashes)', default = false }) == true
+  chef.on_change('arc_solid', function(v) arc_solid = v == true end)
   show_icon = chef.option('c4_icon', { type = 'toggle', label = 'C4 mode icon by the crosshair', default = true }) ~= false
   chef.on_change('c4_icon', function(v) show_icon = v ~= false end)
   weapon_arcs = chef.option('weapon_arcs', { type = 'toggle', label = 'Weapon arcs (grenade launchers, rockets...)',
                                              default = true }) ~= false
   chef.on_change('weapon_arcs', function(v) weapon_arcs = v ~= false end)
+  AIMING.first_person = chef.option('weapon_arcs_first_person', { type = 'toggle', label = 'Weapon arcs in first person too',
+                                                                  default = false }) == true
+  chef.on_change('weapon_arcs_first_person', function(v) AIMING.first_person = v == true end)
+  AIMING.dot_on = chef.option('aim_dot', { type = 'toggle', label = 'Aim dot for rifles with no third-person crosshair',
+                                           default = true }) ~= false
+  chef.on_change('aim_dot', function(v) AIMING.dot_on = v ~= false end)
   grenade.on = chef.option('grenade_arcs', { type = 'toggle', label = 'Grenade arcs (G held, or one in hand aimed)',
                                             default = true })
                ~= false
@@ -2338,6 +2301,9 @@ function M.update(dt)
     draw_arc(c, true, release_point(c, c4_det, true))
   elseif h then
     draw_arc(c, h.c4, release_point(c, h.unit, h.c4, h.off))
+  elseif weapon and weapon.dot then
+    clear_arc()
+    if aim then AIMING.draw_dot() end
   elseif weapon then
     draw_points(c, weapon_path(c, weapon, muzzle, aim))
   elseif nade then

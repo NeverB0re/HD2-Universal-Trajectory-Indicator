@@ -22,7 +22,6 @@ SOURCE = os.path.join(HERE, "src", "throwable_arcs.lua")
 ARMOUR = os.path.join(HERE, "src", "armour_table.lua")
 WEAPON_TYPES = os.path.join(HERE, "src", "weapon_types.lua")
 GRENADE_PROFILES = os.path.join(HERE, "src", "grenade_profiles.lua")
-WEAPON_FRAMES = os.path.join(HERE, "src", "weapon_frames.lua")
 ICONS = {"deploy": os.path.join(HERE, "src", "c4_deploy.png"), "detonate": os.path.join(HERE, "src", "c4_detonate.png")}
 ICON_SIZES = (24, 32, 48, 76)    # px: the icon is drawn 26-52 px tall (1080p to 4K), and the UI has no mipmaps
 DIST = os.path.join(HERE, "dist")
@@ -37,8 +36,9 @@ MANIFEST = {
     "Version": 1,
     "Guid": "7d2c9b4e-31a8-4f6c-b0e5-9a4f2d6c8e17",
     "Name": NAME,
-    "Description": "Shows where a stratagem ball or a C4 charge will fly while you aim it, and C4's mode by "
-                   "the crosshair. Requires Chef Shared Loader.",
+    "Description": "Shows where a stratagem ball, C4 charge, grenade or falling weapon round will fly while you aim it, "
+                   "an aim dot for rifles with no third-person crosshair, and C4's mode by the crosshair. "
+                   "Requires Chef Shared Loader.",
     "Options": [{"Name": NAME, "Description": "Requires Chef Shared Loader.", "Include": [FOLDER]}],
 }
 
@@ -76,17 +76,14 @@ def built_source():
         weapon_types = f.read()
     with open(GRENADE_PROFILES, encoding="utf-8") as f:
         grenade_profiles = f.read()
-    with open(WEAPON_FRAMES, encoding="utf-8") as f:
-        weapon_frames = f.read()
-    for slot in ('"@ARMOUR@"', '"@ICONS@"', '"@WEAPON_TYPES@"', '"@GRENADE_PROFILES@"', '"@WEAPON_FRAMES@"'):
+    for slot in ('"@ARMOUR@"', '"@ICONS@"', '"@WEAPON_TYPES@"', '"@GRENADE_PROFILES@"'):
         if source.count(slot) != 1:
             raise SystemExit("throwable_arcs.lua has no single %s slot" % slot)
     icons = ", ".join("%s = { %s }" % (mode, ", ".join("%d, '%016x'" % (n, icon_id(mode, n)) for n in ICON_SIZES))
                       for mode in sorted(ICONS))
     return (source.replace('"@ARMOUR@"', "(function()\n" + armour + "end)()").replace('"@ICONS@"', "{ %s }" % icons)
             .replace('"@WEAPON_TYPES@"', "(function()\n" + weapon_types + "end)()")
-            .replace('"@GRENADE_PROFILES@"', "(function()\n" + grenade_profiles + "end)()")
-            .replace('"@WEAPON_FRAMES@"', "(function()\n" + weapon_frames + "end)()"))
+            .replace('"@GRENADE_PROFILES@"', "(function()\n" + grenade_profiles + "end)()"))
 
 
 # Parts adapted from Chef Shared Loader by Th3chef (tools/hd2_patch.py: texture_rgba_header, write_lua_archive)
