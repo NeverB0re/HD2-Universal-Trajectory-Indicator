@@ -119,7 +119,10 @@ chef = {
   end,
   triangle = function(...) fake.shapes[#fake.shapes + 1] = 'triangle' end,
   circle = function(...) fake.shapes[#fake.shapes + 1] = 'circle' end,
-  ring = function(...) fake.shapes[#fake.shapes + 1] = 'ring' end,
+  ring = function(x, y, r_in, r_out, c, layer)
+    fake.shapes[#fake.shapes + 1] = 'ring'
+    fake.rings[#fake.rings + 1] = { x = x, y = y, r_in = r_in, r_out = r_out }
+  end,
   setting = function(path) return fake.settings[path] end,
   bitmap = function(tex, x, y, w, h, c, layer)
     if fake.no_bitmap then return false end
@@ -158,7 +161,7 @@ function fake.frame(M, dt)
       for _, u in ipairs(fake.units) do if w.kinds[u.kind] then w.items[#w.items + 1] = { unit = u, kind = u.kind } end end
     end
   end
-  fake.lines, fake.shapes, fake.rects = {}, {}, {}
+  fake.lines, fake.shapes, fake.rects, fake.rings = {}, {}, {}, {}
   M.update(dt)
   fake.pressed, fake.wheel = {}, 0
 end
@@ -517,7 +520,7 @@ class ArcTest(unittest.TestCase):
                 self.nade_in_hand(kind)
                 self.fake['down']['g'] = True
                 self.frames(3)
-                line = self.lines()[1]            # centre strand: no width offset
+                line = self.lines()[2]            # centre strand: no width offset
                 speed = (line[3] - line[0]) / .03 / math.cos(math.radians(35))
                 self.assertAlmostEqual(speed, expected, delta=.02)
 
@@ -530,11 +533,11 @@ class ArcTest(unittest.TestCase):
         nade = self.nade_in_hand('46333fc9e3d4bd34')
         self.fake['down']['g'] = True
         self.frames(3)
-        standing = self.lines()[1]
+        standing = self.lines()[2]
         nade.z = .05
         self.fake.me.nodes[7][3] = .05
         self.frames(1)
-        prone = self.lines()[1]
+        prone = self.lines()[2]
         self.assertAlmostEqual(standing[2] - prone[2], 1.45, delta=.001)
         self.assertAlmostEqual(prone[1], -.5, delta=.001)
 
@@ -1241,12 +1244,12 @@ class ArcTest(unittest.TestCase):
         self.aim(10)
         lines = self.lines()
         self.assertGreater(len(lines), 30)
-        self.assertEqual(len(lines) % 3, 0, "3 lines a segment, not 2")
+        self.assertEqual(len(lines) % 5, 0, "5 lines a segment, half a render pixel apart")
         # 2 render pixels across between the outer two (render scale 0.5 of 1200: 2 px each)
-        a, b = lines[30], lines[32]
+        a, b = lines[30], lines[34]
         mid = [(a[i] + a[i + 3]) / 2 for i in range(3)]
         width_px = math.dist(a[:3], b[:3]) / (math.dist(mid, (0, 0, 2)) * 0.96 / 1200)
-        self.assertAlmostEqual(width_px, 4, delta=0.2)
+        self.assertAlmostEqual(width_px, 4, delta=0.3)
 
     def test_c4_prone_looking_behind(self):
         # lying down, looking behind: the detonator 0.4 m up and close to my feet, still the aim
@@ -2064,12 +2067,12 @@ class ArcTest(unittest.TestCase):
         self.weapon_nodes(gun, (2.238, -.2, 1.296), (1.645, -.2, 1.46))
         self.fake['mouse']['right'] = True
         self.frames(3)
-        for got, want in zip(self.lines()[1][:3], (2.238, -.2, 1.296)):
+        for got, want in zip(self.lines()[2][:3], (2.238, -.2, 1.296)):
             self.assertAlmostEqual(got, want, delta=.0001)
         self.assertIn('weapon muzzle: GL-21 Grenade Launcher (attach_muzzle)', self.logs())
         gun.nodes[11][3] = 1.5
         self.frames(1)
-        self.assertAlmostEqual(self.lines()[1][2], 1.5, delta=.0001)
+        self.assertAlmostEqual(self.lines()[2][2], 1.5, delta=.0001)
 
     def test_close_prone_third_person_camera_is_not_the_sight_camera(self):
         gun = self.weapon_in_hand(self.GL)
@@ -2079,7 +2082,7 @@ class ArcTest(unittest.TestCase):
         self.fake['mouse']['right'] = True
         self.frames(3)
         self.assertGreater(len(self.lines()), 20)
-        self.assertAlmostEqual(self.lines()[1][2], .396, delta=.0001)
+        self.assertAlmostEqual(self.lines()[2][2], .396, delta=.0001)
 
     def test_camera_at_sight_still_hides_first_person_weapon_arc(self):
         gun = self.weapon_in_hand(self.GL)
@@ -2119,14 +2122,14 @@ class ArcTest(unittest.TestCase):
         gun.nodes[13] = self.lua.table_from((2.3, -.2, 1.4))
         self.lua.execute('chef.world_id = function() return 5 end')
         self.frames(1)
-        self.assertAlmostEqual(self.lines()[1][2], 1.4, delta=.0001)
+        self.assertAlmostEqual(self.lines()[2][2], 1.4, delta=.0001)
 
     def test_bad_muzzle_position_uses_the_existing_fallback(self):
         gun = self.weapon_in_hand(self.GL)
         self.weapon_nodes(gun, (10000, 0, 0))
         self.fake['mouse']['right'] = True
         self.frames(3)
-        self.assertAlmostEqual(self.lines()[1][0], gun.x + .45, delta=.0001)
+        self.assertAlmostEqual(self.lines()[2][0], gun.x + .45, delta=.0001)
         self.assertIn('legacy fallback; node unavailable', self.logs())
 
     def test_rocket_uses_its_muzzle_node_name(self):
@@ -2134,7 +2137,7 @@ class ArcTest(unittest.TestCase):
         self.weapon_nodes(gun, (2.189, -.232, 1.365), (1.7, -.3, 1.38), name='muzzle')
         self.fake['mouse']['right'] = True
         self.frames(3)
-        self.assertAlmostEqual(self.lines()[1][0], 2.189, delta=.0001)
+        self.assertAlmostEqual(self.lines()[2][0], 2.189, delta=.0001)
         self.assertIn('weapon muzzle: GR-8 Recoilless Rifle (muzzle)', self.logs())
 
     def recorded_flights(self):
@@ -2222,8 +2225,8 @@ class ArcTest(unittest.TestCase):
 
     def drawn_direction(self):
         """the arc's start and the way it goes, from its first stretch (gravity barely bends it there)"""
-        points = sorted(self.lines(), key=lambda l: l[0])
-        a, b = points[0], points[3]
+        lines = self.lines()
+        a, b = lines[2], lines[5 * 3 + 2]        # the centre lines of two segments (5 lines each at the default width)
         d = math.dist(a[:3], b[:3])
         return a[:3], [(b[i] - a[i]) / d for i in range(3)]
 
@@ -2548,87 +2551,112 @@ class ArcTest(unittest.TestCase):
             self.frames(25)
         self.assertEqual(self.logs().count(' shot t='), 6, 'three more while it turned, and no more than three')
 
-    AMR, APEX = '89c5493e08ca4207', 'b814eece17533bc4'
+    AMR, APEX, SIGHTLINER = '89c5493e08ca4207', 'b814eece17533bc4', '41f2def484634b59'
 
-    def dots(self):
-        return [(r.x, r.y, r.w, r.h) for r in self.fake.rects.values()]
+    def circles(self):
+        return [(r.x, r.y, r.r_in, r.r_out) for r in self.fake.rings.values()]
 
-    def test_a_rifle_with_no_crosshair_gets_a_dot_where_the_round_is_going_and_no_arc(self):
-        for kind in (self.AMR, self.APEX):
-            with self.subTest(kind=kind):
-                self.setUp()
-                gun = self.weapon_in_hand(kind)
-                self.weapon_nodes(gun, (2.25, -.2, 1.2))
-                self.game_aim(102.25, 30., 3.)
-                self.game_weapon_hit(40., 2., 1.)
-                self.fake['mouse']['right'] = True
-                self.frames(3)
-                self.assertEqual([l for l in self.lines() if l[0] > -9000], [], 'no arc')
-                dots = self.dots()
-                self.assertEqual(len(dots), 2, 'a dot and its dark edge')
-                x, y, w, h = dots[1]
-                self.assertAlmostEqual(x + w / 2, 40., delta=.01)
-                self.assertAlmostEqual(y + h / 2, 2., delta=.01)
-                self.assertAlmostEqual(w, round(1200 * .004), delta=.01)
-                self.M.shutdown()
-
-    def test_the_dot_moves_with_the_field_and_goes_with_the_aiming(self):
-        gun = self.weapon_in_hand(self.AMR)
+    def rifle(self, kind=None):
+        gun = self.weapon_in_hand(kind or self.AMR)
         self.weapon_nodes(gun, (2.25, -.2, 1.2))
         self.game_aim(102.25, 30., 3.)
         self.game_weapon_hit(40., 2., 1.)
+        return gun
+
+    def no_arc(self):
+        return [l for l in self.lines() if l[0] > -9000] == []
+
+    def test_a_rifle_with_no_crosshair_gets_the_games_aim_circle_where_the_round_is_going_and_no_arc(self):
+        for kind in (self.AMR, self.APEX, self.SIGHTLINER):
+            with self.subTest(kind=kind):
+                self.setUp()
+                self.rifle(kind)
+                self.fake['mouse']['right'] = True
+                self.frames(3)
+                self.assertTrue(self.no_arc())
+                circles = self.circles()
+                self.assertEqual(len(circles), 1)
+                x, y, r_in, r_out = circles[0]
+                self.assertAlmostEqual(x, 40., delta=.01)
+                self.assertAlmostEqual(y, 2., delta=.01)
+                self.assertAlmostEqual(r_in, 6.3, delta=.01, msg='measured from the game, on a 1200 line screen')
+                self.assertAlmostEqual(r_out, 8.5, delta=.01)
+                self.M.shutdown()
+
+    def test_the_circle_moves_with_the_field(self):
+        self.rifle()
         self.fake['mouse']['right'] = True
         self.frames(3)
         self.lua.eval("function(f) f.weapon_point = { 60, 5, 1 } end")(self.fake)
         self.frames(1)
-        x, y, w, h = self.dots()[1]
-        self.assertAlmostEqual(x + w / 2, 60., delta=.01)
-        self.fake['mouse']['right'] = False
-        self.frames(1)
-        self.assertEqual(self.dots(), [])
+        self.assertAlmostEqual(self.circles()[0][0], 60., delta=.01)
 
-    def test_no_dot_for_a_point_behind_the_screen_or_in_first_person(self):
-        gun = self.weapon_in_hand(self.AMR)
-        self.weapon_nodes(gun, (2.25, -.2, 1.2))
-        self.game_aim(102.25, 30., 3.)
-        self.game_weapon_hit(40., 2., 1.)
+    def test_the_circle_shows_while_a_rifle_is_in_my_hand_aimed_or_not(self):
+        self.rifle()
+        self.right_hand_at(1.8, -.2, 1.2)
+        self.frames(2)
+        self.assertEqual(len(self.circles()), 1, 'not aiming')
+        self.fake['mouse']['right'] = True
+        self.frames(2)
+        self.assertEqual(len(self.circles()), 1, 'aiming')
+        self.fake['mouse']['right'] = False
+        self.frames(2)
+        self.assertEqual(len(self.circles()), 1, 'not aiming again')
+
+    def test_a_slung_rifle_shows_no_circle(self):
+        self.rifle()
+        self.right_hand_at(1.0, .6, 1.2)
+        self.frames(30)
+        self.assertEqual(self.circles(), [])
+
+    def test_a_grenade_arc_goes_before_the_idle_circle(self):
+        self.rifle()
+        self.right_hand_at(1.8, -.2, 1.2)
+        self.hand_pose(70)
+        self.frames(2)
+        self.assertEqual(len(self.circles()), 1)
+        self.hand_pose(41)
+        self.frames(30)
+        self.assertEqual(self.circles(), [])
+
+    def test_no_circle_for_a_point_behind_the_screen_or_in_first_person(self):
+        gun = self.rifle()
         self.fake['mouse']['right'] = True
         self.lua.eval("function(f) f.behind = true end")(self.fake)
         self.frames(2)
-        self.assertEqual(self.dots(), [])
+        self.assertEqual(self.circles(), [])
         self.lua.eval("function(f, u) f.behind = false; u.x, u.z = 0.3, 1.8 end")(self.fake, gun)
         self.frames(2)
-        self.assertEqual(self.dots(), [])
+        self.assertEqual(self.circles(), [])
         self.assertIn('(first person: not drawn)', self.logs())
 
-    def test_the_dot_and_the_weapon_arcs_have_options_of_their_own(self):
-        gun = self.weapon_in_hand(self.AMR)
-        self.weapon_nodes(gun, (2.25, -.2, 1.2))
-        self.game_aim(102.25, 30., 3.)
+    def test_the_circle_and_the_weapon_arcs_have_options_of_their_own(self):
+        self.rifle()
         self.fake['mouse']['right'] = True
         self.fake.changes['weapon_arcs'](False)
         self.frames(2)
-        self.assertEqual(len(self.dots()), 2, 'weapon arcs off: the dot stays')
-        self.fake.changes['aim_dot'](False)
+        self.assertEqual(len(self.circles()), 1, 'weapon arcs off: the circle stays')
+        self.fake.changes['aim_circle'](False)
         self.frames(2)
-        self.assertEqual(self.dots(), [])
+        self.assertEqual(self.circles(), [])
         self.fake.changes['weapon_arcs'](True)
         self.frames(2)
-        self.assertEqual(self.dots(), [], 'nor does an arc take its place')
-        self.assertEqual([l for l in self.lines() if l[0] > -9000], [])
+        self.assertEqual(self.circles(), [], 'nor does an arc take its place')
+        self.assertTrue(self.no_arc())
 
-    def test_a_weapon_arc_is_kept_with_the_dot_turned_off(self):
+    def test_a_weapon_arc_is_kept_with_the_circle_turned_off(self):
         self.weapon_in_hand(self.GL)
         self.fake['mouse']['right'] = True
-        self.fake.changes['aim_dot'](False)
+        self.fake.changes['aim_circle'](False)
         self.frames(2)
         self.assertGreater(len(self.lines()), 20)
 
     def first_person_gl(self):
         gun = self.weapon_in_hand(self.GL, back=0.1)
         self.lua.eval("function(u) u.z = 1.8 end")(gun)     # 0.5 m from the camera
+        self.weapon_nodes(gun, (0.75, 0., 1.9))
         self.game_aim(102.25, 30., 3.)
-        self.game_weapon_hit(40., 2., 1.)
+        self.game_weapon_hit(40., 0., 2.)                   # on the camera's line
         self.fake['mouse']['right'] = True
         return gun
 
@@ -2638,29 +2666,25 @@ class ArcTest(unittest.TestCase):
         self.assertEqual(self.lines(), [])
         self.assertIn('(first person: not drawn)', self.logs())
 
-    def test_with_the_option_a_first_person_arc_starts_at_the_camera_and_goes_to_the_point(self):
+    def test_a_first_person_arc_starts_at_the_muzzle_for_the_crosshair_not_the_lagging_field(self):
         self.fake.opts['weapon_arcs_first_person'] = True
         self.M = self.load()
         self.first_person_gl()
         self.frames(3)
         self.assertGreater(len(self.lines()), 20)
         self.assertIn('GL-21 Grenade Launcher (first person)', self.logs())
-        cam = (self.fake.cam.x, self.fake.cam.y, self.fake.cam.z)
         start, way = self.drawn_direction()
-        self.assertLess(math.dist(start, (cam[0] + .3, cam[1], cam[2])), .03)
-        self.assertAlmostEqual(math.degrees(math.atan2(way[1], way[0])),
-                               math.degrees(math.atan2(2 - cam[1], 40 - cam[0] - .3)), delta=.3)
-
-    def test_a_first_person_shot_records_the_muzzle_beside_the_start_drawn(self):
-        self.fake.opts['weapon_arcs_first_person'] = True
-        self.M = self.load()
-        gun = self.first_person_gl()
-        self.weapon_nodes(gun, (0.7, -.2, 1.7))
-        self.frames(2)
-        self.fake['mouse']['left'] = True
+        self.assertLess(math.dist(start, (.75, 0., 1.9)), .03)
+        self.assertAlmostEqual(math.degrees(math.atan2(way[1], way[0])), 0, delta=.3)
+        # the view turns: the camera's line goes at once; the field, from x4joxek for its distance only, can stay behind
+        self.lua.eval("""function(f)
+          local a = math.rad(8)
+          f.cam.fx, f.cam.fy = math.cos(a), math.sin(a)
+        end""")(self.fake)
         self.frames(1)
-        self.assertIn('first-person=true', self.logs())
-        self.assertIn('animated-muzzle 0.700000 -0.200000 1.700000', self.logs())
+        _, way = self.drawn_direction()
+        self.assertAlmostEqual(math.degrees(math.atan2(way[1], way[0])), 8, delta=.6)
+        self.assertIn('direction-mode=first-person', self.fire_and_logs())
 
     def test_the_first_person_option_can_change_while_playing(self):
         self.first_person_gl()
@@ -2671,7 +2695,38 @@ class ArcTest(unittest.TestCase):
         self.assertGreater(len(self.lines()), 20)
         self.fake.changes['weapon_arcs_first_person'](False)
         self.frames(2)
-        self.assertEqual([l for l in self.lines() if l[0] > -9000], [])
+        self.assertTrue(self.no_arc())
+
+    def test_with_another_mods_first_person_camera_the_arc_is_drawn_as_the_game_aims(self):
+        gun = self.first_person_gl()
+        self.lua.eval("function(f) f.weapon_point = { 40, 1.5, 2 } end")(self.fake)  # 1.5 m off this camera's line
+        self.frames(2)
+        self.assertEqual(self.lines(), [], 'not sure yet')
+        self.frames(40)
+        self.assertIn("the camera is another mod's", self.logs())
+        self.assertGreater(len(self.lines()), 20, 'with the first-person option off')
+        self.assertIn('direction-mode=weapon-hit', self.fire_and_logs())
+
+    def test_a_field_off_the_camera_while_it_turns_doesnt_make_it_another_mods(self):
+        self.first_person_gl()
+        self.lua.eval("function(f) f.weapon_point = { 40, 1.5, 2 } end")(self.fake)
+        for i in range(60):
+            a = math.radians(i * .5)
+            self.lua.eval("function(f, x, y) f.cam.fx, f.cam.fy = x, y end")(self.fake, math.cos(a), math.sin(a))
+            self.frames(1)
+        self.assertNotIn("the camera is another mod's", self.logs())
+
+    def test_a_held_weapon_isnt_lost_when_it_lags_a_fast_turn(self):
+        gun = self.weapon_in_hand(self.GL)
+        self.right_hand_at(1.8, -.7, 1.2)                   # 0.5 m from the unit: not its grip, as in first person
+        self.fake['mouse']['right'] = True
+        self.frames(2)
+        self.assertGreater(len(self.lines()), 20)
+        a = math.radians(21)                                # 0.934 along the camera, as the log's 0.93-0.946
+        self.lua.eval("function(f, x, y) f.cam.fx, f.cam.fy = x, y end")(self.fake, math.cos(a), math.sin(a))
+        self.frames(1)
+        self.assertGreater(len(self.lines()), 20)
+        self.assertNotIn('points 0.9', self.logs())
 
     def test_aiming_a_weapon_it_doesnt_know_names_whats_at_my_hand_now_and_then(self):
         self.lua.eval("function(f) f.me.x = 1.5 end")(self.fake)
@@ -2688,7 +2743,7 @@ class ArcTest(unittest.TestCase):
         self.frames(600)
         self.assertEqual(self.logs().count('aim unknown weapon'), unknown, 'not when not aiming')
 
-    def test_the_arc_width_is_how_many_lines_side_by_side(self):
+    def test_the_arc_width_fills_in_half_a_render_pixel_at_a_time(self):
         self.weapon_in_hand(self.GL)
         self.fake['mouse']['right'] = True
         self.frames(2)
@@ -2699,8 +2754,8 @@ class ArcTest(unittest.TestCase):
         self.fake.changes['arc_width'](5)
         self.frames(1)
         thick = len(self.lines())
-        self.assertEqual(normal, 3 * thin, 'three by default, as it always was')
-        self.assertEqual(thick, 5 * thin)
+        self.assertEqual(normal, 5 * thin)
+        self.assertEqual(thick, 9 * thin)
 
     def test_a_solid_arc_has_no_gaps(self):
         self.weapon_in_hand(self.GL)
@@ -2717,7 +2772,7 @@ class ArcTest(unittest.TestCase):
 
     def test_the_manifest_tells_all_the_mod_does(self):
         text = ta_build.MANIFEST['Description']
-        for word in ('stratagem', 'C4', 'grenade', 'weapon', 'dot'):
+        for word in ('stratagem', 'C4', 'grenade', 'weapon', 'circle'):
             self.assertIn(word, text)
 
     def test_all_supported_weapons_use_their_asset_verified_muzzle_names_and_positions(self):
@@ -2744,7 +2799,7 @@ class ArcTest(unittest.TestCase):
                 self.fake['mouse']['right'] = True
                 self.frames(3)
                 self.assertGreater(len(self.lines()), 20)
-                for got, want in zip(self.lines()[1][:3], muzzle):
+                for got, want in zip(self.lines()[2][:3], muzzle):
                     self.assertAlmostEqual(got, want, delta=.0001)
                 self.vehicle_at(1.9, .3, -.6)
                 self.fake['mouse']['left'] = True

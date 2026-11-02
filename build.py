@@ -37,7 +37,7 @@ MANIFEST = {
     "Guid": "7d2c9b4e-31a8-4f6c-b0e5-9a4f2d6c8e17",
     "Name": NAME,
     "Description": "Shows where a stratagem ball, C4 charge, grenade or falling weapon round will fly while you aim it, "
-                   "an aim dot for rifles with no third-person crosshair, and C4's mode by the crosshair. "
+                   "an aim circle for rifles with no third-person crosshair, and C4's mode by the crosshair. "
                    "Requires Chef Shared Loader.",
     "Options": [{"Name": NAME, "Description": "Requires Chef Shared Loader.", "Include": [FOLDER]}],
 }

@@ -9,7 +9,7 @@
 -- Transmog's catalog (Nexus 16633).
 local chef = ...
 local M = {}
-local VERSION = '1.1.1-test.c5'
+local VERSION = '1.1.1-test.c6'
 
 if chef.has and chef.has('own_log') then chef.own_log('throwable_arcs') end
 local function log(fmt, ...) chef.log(fmt, ...) end
@@ -653,7 +653,8 @@ end
 local COLORS = { { 0, 255, 0 }, { 255, 255, 255 }, { 80, 160, 255 }, { 255, 70, 70 } }
 local arc_color = 1
 local arc_width, arc_solid = 3, false   -- render pixels wide; solid: no dashes
--- The arc is arc_width lines a render pixel apart, arc_width render pixels wide, at any render scale. The render scale: the game's
+-- The engine's lines are one render pixel wide whatever is asked. An arc arc_width render pixels wide is lines half a
+-- render pixel apart (a whole pixel apart they show as a bundle of strands), at any render scale. The render scale: the game's
 -- settings file's render resolution over the screen's height, read every SCALE_EVERY s. A white arc came out faint
 -- blue, red or green in parts, at some places and headings only, on any map, at native scale and with anti-aliasing
 -- off alike (1.0.3-test.3 and after); the cause is unknown.
@@ -759,7 +760,7 @@ local function draw_points(c, pts)
   end
   local px_angle = (tonumber(c.fov) or 0.96) / math.max(1, sh or 1080)
   local offsets = {}
-  for i = 1, arc_width do offsets[i] = (i - (arc_width + 1) / 2) / render_scale end
+  for i = 1, 2 * arc_width - 1 do offsets[i] = (i - arc_width) / 2 / render_scale end
   local col = COLORS[arc_color] or COLORS[1]
   world_strip(c, pts, chef.color(col[1], col[2], col[3], 255), px_angle, offsets)
   drew = true
@@ -782,13 +783,13 @@ end
 -- 1/2 rho pi/4 in the wiki's units is 4.81e-4). Its start and direction: see weapon_aim.
 -- The weapon in hand: while aiming, the one weapon unit near me that points the way the camera looks (held ones
 -- 0.998 and more, worn ones 0.8 and less; hand poses don't tell, the CB-9 and the Ultimatum share one).
--- In first person: only with its option, from the camera (there the round leaves from the camera, not the muzzle).
+-- In first person: only with its option.
 -- Dashed by distance as the stratagem arc is (a point every SEG m, farther apart far off: SEG_FAR of the distance from
 -- the camera), not by flight time (a 100 m/s round's dashes were 6 m long).
 local WEAPON_K, WEAPON_LIFT, WEAPON_FROM = 4.7e-4, math.rad(0.6), { 1.3, -0.18, -0.35 }
 local WEAPON_STEP = 1 / 120      -- s per step of the flight
 local MUZZLE, SEG, SEG_FAR, MOST_POINTS = 0.45, 0.66, 0.015, 800   -- MUZZLE is only the unavailable-node fallback now
-local AIMING = { HELD_KEEP = 0.8, DOT = 0.004, FIRST_PERSON_AHEAD = 0.3, dot_on = true, first_person = false }
+local AIMING = { HELD_KEEP = 0.8, circle_on = true, first_person = false }
 local SIDE_CARRY = 0.5
 -- First person: a nearby camera at the weapon's sight; root distance is only a compatibility fallback. Actual hand
 -- proximity can identify a held weapon despite a lagging barrel while prone; without the hand, retain HELD_ALONG.
@@ -817,10 +818,12 @@ local WEAPONS = {
   ['e8d5f49ad7780e54'] = { 250, 2, 0.4, 0.6, 'PLAS-45 Epoch', muzzle = { 0.8, 0.12 } },
   -- the One-Two's underbarrel launcher fires the GP-31's round; drawn only while its fire mode selects it (ub)
   ['a955c4ea6f6d4203'] = { 100, 1, 38.4, false, 'AR/GL-21 One-Two (its grenade launcher)', ub = true },
-  -- The game gives these no crosshair in third person, and they hardly drop: a dot where the round is going, no arc
-  -- (filediver: support_weapons/sniper_rifle and sniper_rifle_duo, taken to be the APW-1 and the AMW-20: to be seen).
-  ['89c5493e08ca4207'] = { 0, 0, 0, false, 'APW-1 Anti-Materiel Rifle', dot = true },
-  ['b814eece17533bc4'] = { 0, 0, 0, false, 'AMW-20 Apex', dot = true },
+  -- The game gives these no crosshair in third person (the wiki; the two reticle mods on Nexus list these three), and they
+  -- hardly drop: its aim circle where the round is going, no arc. The APW-1's kind is sure (HD2Runtime); filediver's
+  -- sniper_rifle_duo (it has a backpack, as the Apex) and sniper_rifle_simo (a bolt-action) are taken to be the other two.
+  ['89c5493e08ca4207'] = { 0, 0, 0, false, 'APW-1 Anti-Materiel Rifle', circle = true },
+  ['b814eece17533bc4'] = { 0, 0, 0, false, 'AMW-20 Apex', circle = true },
+  ['41f2def484634b59'] = { 0, 0, 0, false, 'R-40 Sightliner', circle = true },
 }
 local weapon_watch
 do
@@ -853,8 +856,9 @@ local function held_weapon(c)
     if nearby then
       local fx, fy, fz = chef.unit_rotation(held.unit)
       local a = type(fx) == 'number' and fx * c.fx + fy * c.fy + fz * c.fz
-      if a and ((hand_d and hand_d <= 0.35 * 0.35 and a >= 0)
-                or (not hand and a >= AIMING.HELD_KEEP)) then return held.kind, held.unit end
+      if a and ((hand_d and hand_d <= 0.35 * 0.35 and a >= 0) or a >= AIMING.HELD_KEEP) then
+        return held.kind, held.unit
+      end
     end
   end
   held, held_miss = nil, nil
@@ -1009,20 +1013,21 @@ end)()
 -- field's id is the hash of a name we don't know; rm_qp0d hashes to it). test.c3, 12 tracked shots: at the frame a round
 -- leaves (0.04-0.05 s after the click) the line from the muzzle to this point is within 0.05-0.49 degrees of its flight,
 -- turning fast too, where the camera was 4.5 off. Nothing here is worked out per weapon, pose, distance or turn.
-AIMING.weapon_hit = (function()
-  local checked
-  return function()
-    local gs = chef.call_kind('Network.game_session', 'aim weapon hit')
+-- x4joxek is the other such field: the point on the camera's own line that the crosshair is on.
+AIMING.field_point = (function()
+  local checked = {}
+  return function(field)
+    local gs = chef.call_kind('Network.game_session', 'aim field')
     local avatar = gs and AIMING.avatar(gs)
     if not avatar then return nil end
-    local v = read_field(gs, avatar, 'vvhx8ga', 'rm_qp0d', 'aim weapon hit')
+    local v = read_field(gs, avatar, 'vvhx8ga', field, 'aim field ' .. field)
     local kind = type(v)
     if v == nil or kind == 'table' or kind == 'string' or kind == 'number' or kind == 'boolean' then return nil end
-    if checked ~= avatar then
-      if chef.call_kind('Script.type_name', 'aim weapon hit', v) ~= 'Vector3' then return nil end
-      checked = avatar
+    if checked[field] ~= avatar then
+      if chef.call_kind('Script.type_name', 'aim field', v) ~= 'Vector3' then return nil end
+      checked[field] = avatar
     end
-    local x, y, z = chef.call_kind('Vector3.to_elements', 'aim weapon hit', v)
+    local x, y, z = chef.call_kind('Vector3.to_elements', 'aim field', v)
     if type(x) == 'number' and type(y) == 'number' and type(z) == 'number' and x == x and y == y and z == z then
       return x, y, z
     end
@@ -1075,36 +1080,100 @@ function AIMING.usable(c, muzzle, nearest, farthest, x, y, z)
   return d >= nearest and d <= farthest and (dx * c.fx + dy * c.fy + dz * c.fz) / d > 0.3
 end
 
--- The round leaves the muzzle for that point. With neither read: for the point AIMING.TARGET m under the crosshair (47
--- tracked rounds fly from the muzzle to a point on the camera's line whatever the barrel does).
+-- The round leaves the muzzle for that point, in every pose. With neither read: for the point AIMING.TARGET m under the
+-- crosshair (47 tracked rounds fly from the muzzle to a point on the camera's line whatever the barrel does).
+-- In first person the game's aim doesn't lag: the crosshair is where the round goes however fast the view turns, and
+-- the weapon's field runs up to 22 degrees behind it (test.c5; rm_qp0d 9 off in a turn where x4joxek is 1.4 off, and
+-- that only because it is a network value). So the camera's line now, as far along as x4joxek says.
 AIMING.TARGET = 100
-local function weapon_aim(c, kind, u, muzzle)
+local function weapon_aim(c, kind, u, muzzle, fp)
   if not muzzle then return nil, 'camera' end
   local d, mode = AIMING.TARGET, 'crosshair'
+  if fp then
+    local hx, hy, hz = AIMING.field_point('x4joxek')
+    if hx then
+      local along = (hx - c.x) * c.fx + (hy - c.y) * c.fy + (hz - c.z) * c.fz
+      if along >= 1.5 and along <= 2000 then d, mode = along, 'first-person' end
+    end
+  end
   local x, y, z = c.x + c.fx * d, c.y + c.fy * d, c.z + c.fz * d
-  local hx, hy, hz = AIMING.weapon_hit()
-  if AIMING.usable(c, muzzle, 1.5, 2000, hx, hy, hz) then
-    x, y, z, mode = hx, hy, hz, 'weapon-hit'
-  else
-    local tx, ty, tz = AIMING.target()
-    if AIMING.usable(c, muzzle, 20, 200, tx, ty, tz) then x, y, z, mode = tx, ty, tz, 'aim-target' end
+  if not fp then
+    local hx, hy, hz = AIMING.field_point('rm_qp0d')
+    if AIMING.usable(c, muzzle, 1.5, 2000, hx, hy, hz) then
+      x, y, z, mode = hx, hy, hz, 'weapon-hit'
+    else
+      local tx, ty, tz = AIMING.target()
+      if AIMING.usable(c, muzzle, 20, 200, tx, ty, tz) then x, y, z, mode = tx, ty, tz, 'aim-target' end
+    end
   end
   AIMING.px, AIMING.py, AIMING.pz = x, y, z
   x, y, z = x - muzzle[1], y - muzzle[2], z - muzzle[3]
   return { math.atan2(y, x), math.atan2(z, math.sqrt(x * x + y * y)) }, mode
 end
 
--- A dot where the round is going, for the weapons with no crosshair of their own (DOT of the screen's height).
-function AIMING.draw_dot()
+-- The aim circle for the rifles with no crosshair of their own, as the game draws it for the others: a white ring, half
+-- see-through (screenshots at 1200 lines: 6.3 to 8.5 px from its centre, about half white over what is behind).
+function AIMING.draw_circle()
+  if not chef.ring then return end
   local sx, sy = chef.world_to_screen(AIMING.px, AIMING.py, AIMING.pz)
   if not sx then return end
   local _, h = chef.screen()
-  local size = math.max(3, math.floor(h * AIMING.DOT + 0.5))
-  local col = COLORS[arc_color] or COLORS[1]
-  local layer = (chef.TOP or 0) + 1100      -- over the HUD and the map, under the menus
-  chef.rect(sx - size / 2 - 1, sy - size / 2 - 1, size + 2, size + 2, chef.color(0, 0, 0, 170), layer)
-  chef.rect(sx - size / 2, sy - size / 2, size, size, chef.color(col[1], col[2], col[3], 255), layer + 1)
+  chef.ring(sx, sy, h * 6.3 / 1200, h * 8.5 / 1200, chef.color(255, 255, 255, 128), (chef.TOP or 0) + 1100)
 end
+
+-- Another mod's first-person camera (First Person Camera, Nexus 17827): the game goes on aiming from its own camera, so
+-- the weapon's field holds, and x4joxek, on the real camera's line, lies off this one. Real cameras, held still, under
+-- 100 m: within 0.21 m (test.c3, test.c5). So when off by CAMERA_OFF m for CAMERA_LONG frames: it has been moved.
+AIMING.camera_moved = (function()
+  local CAMERA_OFF, CAMERA_LONG = 0.35, 30
+  local moved, count, fx, fy, fz, world = false, 0, nil, nil, nil, nil
+  return function(c)
+    if world ~= chef.world_id() then world, moved, count, fx = chef.world_id(), false, 0, nil end
+    local still = fx and fx * c.fx + fy * c.fy + fz * c.fz > 0.99999
+    fx, fy, fz = c.fx, c.fy, c.fz
+    if not still then return moved end
+    local hx, hy, hz = AIMING.field_point('x4joxek')
+    if not hx then return moved end
+    local dx, dy, dz = hx - c.x, hy - c.y, hz - c.z
+    local along = dx * c.fx + dy * c.fy + dz * c.fz
+    if along < 2 or along > 100 then return moved end
+    local off = dx * dx + dy * dy + dz * dz - along * along > CAMERA_OFF * CAMERA_OFF
+    count = math.max(0, math.min(CAMERA_LONG, count + (off and 1 or -1)))
+    if (count >= CAMERA_LONG) ~= moved and (count >= CAMERA_LONG or count == 0) then
+      moved = count >= CAMERA_LONG
+      log('aim: the camera is %s', moved and "another mod's: the game's aim isn't along it" or 'the game\'s own')
+    end
+    return moved
+  end
+end)()
+
+-- Those rifles show their circle whenever they are in my hand, aimed or not: looked for five times a second, at the hand
+-- (a weapon's root is at the grip), not with a throwable out.
+AIMING.idle_circle = (function()
+  local kind, unit, next_look = nil, nil, 0
+  return function(c)
+    if not (AIMING.circle_on and weapon_watch and me) then return nil end
+    local t = now()
+    if t >= next_look then
+      next_look, kind, unit = t + 0.2, nil, nil
+      local grip, hand = hand_pose(), right_hand()
+      if hand and grip ~= 40 and grip ~= 41 and grip ~= 42 then
+        local best
+        for _, it in ipairs(weapon_watch.items) do
+          if WEAPONS[it.kind].circle and chef.unit_alive(it.unit) then
+            local x, y, z = chef.unit_position(it.unit)
+            local d = x and (x - hand[1]) ^ 2 + (y - hand[2]) ^ 2 + (z - hand[3]) ^ 2
+            if d and d <= 0.35 * 0.35 and (not best or d < best) then best, kind, unit = d, it.kind, it.unit end
+          end
+        end
+      end
+    end
+    if not (unit and chef.unit_alive(unit)) then return nil end
+    local w = WEAPONS[kind]
+    if first_person(c, unit, w) and not AIMING.camera_moved(c) then return nil end
+    return w, muzzle_of(unit, w), unit, kind
+  end
+end)()
 
 -- DEVELOPMENT_WEAPON_TRACE_BEGIN
 -- Temporary test.6 direction evidence. Never changes the aim/calibration. At most 16 presses per load and three per weapon/context;
@@ -1259,7 +1328,7 @@ local weapon_diagnostic = (function()
       history_unit, history_world = u, chef.world_id()
       -- Restore the old test.3-6 new-unit path for GR-8, without assuming a projectile hash.
       -- One baseline per aiming/equipped unit (six arms/load), then at most six scans per shot; test builds only.
-      if not (kind == '9f80d67a12a7e40f' or (w and w.dot)) then discovery = nil
+      if not (kind == '9f80d67a12a7e40f' or (w and w.circle)) then discovery = nil
       elseif not discovery or discovery.unit ~= u or discovery.world ~= chef.world_id() then
         if discovery_arms < 6 and count < 16 then
           discovery_arms = discovery_arms + 1
@@ -1297,8 +1366,6 @@ local weapon_diagnostic = (function()
         local nodes = weapon_nodes(u, w)
         if nodes.muzzle then vector('muzzle-forward', chef.unit_rotation(u, nodes.muzzle)) end
         vector('muzzle-position', muzzle[1], muzzle[2], muzzle[3])
-        local animated = muzzle_of(u, w)     -- (in first person the start drawn isn't the muzzle)
-        if animated then vector('animated-muzzle', animated[1], animated[2], animated[3]) end
         local x, y, z, vx, vy, vz = launch(c, w, mx, my, aim, muzzle)
         vector('predicted-velocity', vx, vy, vz)
         vector('player-velocity', mx, my, 0)
@@ -1317,7 +1384,7 @@ local weapon_diagnostic = (function()
             tostring(first_person(c, u, w)))
         local seen = setmetatable({}, { __mode = 'k' })
         if watch then for _, it in ipairs(watch.items) do seen[it.unit] = true end end
-        local discover = (kind == '9f80d67a12a7e40f' or w.dot) and discovery
+        local discover = (kind == '9f80d67a12a7e40f' or w.circle) and discovery
         sample = { at=t, world=chef.world_id(), kind=rounds[kind], origin=muzzle, speed=w[1],
                    seen=seen, tracks={}, next=0, scans=0, next_scan=0, weapon=u, row=w,
                    discover=discover and true or false, before=discover and discover.before }
@@ -2020,14 +2087,14 @@ end)()
 
 -- the weapon to draw for this frame: its row in WEAPONS and its muzzle, or nil
 local function weapon_aimed(c)
-  if not ((weapon_arcs or AIMING.dot_on) and aim_down) then
+  if not ((weapon_arcs or AIMING.circle_on) and aim_down) then
     said_weapon, held = nil, nil
     weapon_log_at = 0
-    return nil
+    return AIMING.idle_circle(c)
   end
   local kind, u = held_weapon(c)
   if kind and WEAPONS[kind].ub and not underbarrel_on() then kind = nil end     -- (its rifle: no arc)
-  if kind and not (WEAPONS[kind].dot and AIMING.dot_on or not WEAPONS[kind].dot and weapon_arcs) then
+  if kind and not (WEAPONS[kind].circle and AIMING.circle_on or not WEAPONS[kind].circle and weapon_arcs) then
     kind, held_miss = nil, nil
   end
   if kind then
@@ -2043,8 +2110,8 @@ local function weapon_aimed(c)
       end
     end
   end
-  local fp = kind and first_person(c, u, WEAPONS[kind])
-  local hidden = fp and (WEAPONS[kind].dot or not AIMING.first_person)
+  local fp = kind and first_person(c, u, WEAPONS[kind]) and not AIMING.camera_moved(c)
+  local hidden = fp and (WEAPONS[kind].circle or not AIMING.first_person)
   local said = kind and (WEAPONS[kind][5] .. (hidden and ' (first person: not drawn)' or (fp and ' (first person)' or '')))
                or ('none' .. (held_miss and ' (' .. held_miss .. ')' or ''))
   if said ~= said_weapon and (kind or held_miss == 'throwable hand pose' or now() >= weapon_log_at) then
@@ -2053,11 +2120,7 @@ local function weapon_aimed(c)
     log('weapon aimed: %s', said)
   end
   if not kind or hidden then return nil end
-  if fp then
-    local d = AIMING.FIRST_PERSON_AHEAD
-    return WEAPONS[kind], { c.x + c.fx * d, c.y + c.fy * d, c.z + c.fz * d }, u, kind
-  end
-  return WEAPONS[kind], muzzle_of(u, WEAPONS[kind]), u, kind
+  return WEAPONS[kind], muzzle_of(u, WEAPONS[kind]), u, kind, fp
 end
 
 -- ------------------------------------------------------------------ C4's mode by the crosshair
@@ -2094,9 +2157,9 @@ if chef.has and chef.has('menu') then
   AIMING.first_person = chef.option('weapon_arcs_first_person', { type = 'toggle', label = 'Weapon arcs in first person too',
                                                                   default = false }) == true
   chef.on_change('weapon_arcs_first_person', function(v) AIMING.first_person = v == true end)
-  AIMING.dot_on = chef.option('aim_dot', { type = 'toggle', label = 'Aim dot for rifles with no third-person crosshair',
-                                           default = true }) ~= false
-  chef.on_change('aim_dot', function(v) AIMING.dot_on = v ~= false end)
+  AIMING.circle_on = chef.option('aim_circle', { type = 'toggle', label = 'Aim circle for rifles with no third-person crosshair',
+                                                 default = true }) ~= false
+  chef.on_change('aim_circle', function(v) AIMING.circle_on = v ~= false end)
   grenade.on = chef.option('grenade_arcs', { type = 'toggle', label = 'Grenade arcs (G held, or one in hand aimed)',
                                             default = true })
                ~= false
@@ -2287,27 +2350,27 @@ function M.update(dt)
   read_c4(c)
   c4_icon(c)
   local h = follow_hold()
-  local weapon, muzzle, weapon_unit, weapon_kind, aim, aim_mode
-  if not (aiming or c4_aim or h) then weapon, muzzle, weapon_unit, weapon_kind = weapon_aimed(c) end
+  local weapon, muzzle, weapon_unit, weapon_kind, weapon_fp, aim, aim_mode
+  if not (aiming or c4_aim or h) then weapon, muzzle, weapon_unit, weapon_kind, weapon_fp = weapon_aimed(c) end
   if weapon then
-    aim, aim_mode = weapon_aim(c, weapon_kind, weapon_unit, muzzle)
+    aim, aim_mode = weapon_aim(c, weapon_kind, weapon_unit, muzzle, weapon_fp)
   end
   weapon_diagnostic.vehicle(c, weapon, muzzle, weapon_unit, weapon_kind)
   weapon_diagnostic.update(c, weapon, muzzle, aim, weapon_unit, weapon_kind, aim_mode)
-  local nade = grenade.update(c, not (aiming or c4_aim or h or weapon))
+  local nade = grenade.update(c, not (aiming or c4_aim or h or (weapon and aim_down)))
   if aiming then
     draw_arc(c, false, release_point(c, ball, false))
   elseif c4_aim then
     draw_arc(c, true, release_point(c, c4_det, true))
   elseif h then
     draw_arc(c, h.c4, release_point(c, h.unit, h.c4, h.off))
-  elseif weapon and weapon.dot then
-    clear_arc()
-    if aim then AIMING.draw_dot() end
-  elseif weapon then
-    draw_points(c, weapon_path(c, weapon, muzzle, aim))
   elseif nade then
     draw_points(c, nade)
+  elseif weapon and weapon.circle then
+    clear_arc()
+    if aim then AIMING.draw_circle() end
+  elseif weapon then
+    draw_points(c, weapon_path(c, weapon, muzzle, aim))
   else
     clear_arc()
   end
