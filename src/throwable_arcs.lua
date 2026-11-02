@@ -9,7 +9,7 @@
 -- Transmog's catalog (Nexus 16633).
 local chef = ...
 local M = {}
-local VERSION = '1.1.1-test.c6'
+local VERSION = '1.1.1-test.c7'
 
 if chef.has and chef.has('own_log') then chef.own_log('throwable_arcs') end
 local function log(fmt, ...) chef.log(fmt, ...) end
@@ -1082,29 +1082,56 @@ end
 
 -- The round leaves the muzzle for that point, in every pose. With neither read: for the point AIMING.TARGET m under the
 -- crosshair (47 tracked rounds fly from the muzzle to a point on the camera's line whatever the barrel does).
--- In first person the game's aim doesn't lag: the crosshair is where the round goes however fast the view turns, and
--- the weapon's field runs up to 22 degrees behind it (test.c5; rm_qp0d 9 off in a turn where x4joxek is 1.4 off, and
--- that only because it is a network value). So the camera's line now, as far along as x4joxek says.
+-- In first person the same field, read ahead: it comes about AIM_LEAD s late (a round leaves on the frame after the click,
+-- and the field agrees with it about 0.04 s after that: 5 tracked shots in which it was moving), which a sight on the screen
+-- shows as soon as the view turns. test.c5 drew the field as it came and the arc trailed the sight; test.c6 drew the
+-- camera's line and it ran ahead, for the sight swings behind the camera too. With no field: the camera's line, as far along
+-- as x4joxek says.
+AIMING.read_ahead = (function()
+  local LEAD, SMOOTH, MOST = 0.04, 0.03, math.rad(25)
+  local at, yaw, pitch, rate_y, rate_p
+  local function wrap(a) return (a + math.pi) % (2 * math.pi) - math.pi end
+  local function limit(a) return math.max(-MOST, math.min(MOST, a)) end
+  return function(muzzle, x, y, z)
+    local dx, dy, dz = x - muzzle[1], y - muzzle[2], z - muzzle[3]
+    local ny, np = math.atan2(dy, dx), math.atan2(dz, math.sqrt(dx * dx + dy * dy))
+    local t = now()
+    local dt = at and t - at or 1
+    if dt > 0.15 then
+      rate_y, rate_p = 0, 0
+    elseif dt > 0 then
+      local k = 1 - math.exp(-dt / SMOOTH)
+      rate_y = rate_y + (wrap(ny - yaw) / dt - rate_y) * k
+      rate_p = rate_p + ((np - pitch) / dt - rate_p) * k
+    end
+    at, yaw, pitch = t, ny, np
+    return ny + limit(rate_y * LEAD), np + limit(rate_p * LEAD)
+  end
+end)()
+
 AIMING.TARGET = 100
 local function weapon_aim(c, kind, u, muzzle, fp)
   if not muzzle then return nil, 'camera' end
+  local hx, hy, hz = AIMING.field_point('rm_qp0d')
+  local have = AIMING.usable(c, muzzle, 1.5, 2000, hx, hy, hz)
+  if fp and have then
+    local yaw, pitch = AIMING.read_ahead(muzzle, hx, hy, hz)
+    return { yaw, pitch }, 'first-person'
+  end
   local d, mode = AIMING.TARGET, 'crosshair'
   if fp then
-    local hx, hy, hz = AIMING.field_point('x4joxek')
-    if hx then
-      local along = (hx - c.x) * c.fx + (hy - c.y) * c.fy + (hz - c.z) * c.fz
-      if along >= 1.5 and along <= 2000 then d, mode = along, 'first-person' end
+    local ax, ay, az = AIMING.field_point('x4joxek')
+    if ax then
+      local along = (ax - c.x) * c.fx + (ay - c.y) * c.fy + (az - c.z) * c.fz
+      if along >= 1.5 and along <= 2000 then d = along end
     end
   end
   local x, y, z = c.x + c.fx * d, c.y + c.fy * d, c.z + c.fz * d
-  if not fp then
-    local hx, hy, hz = AIMING.field_point('rm_qp0d')
-    if AIMING.usable(c, muzzle, 1.5, 2000, hx, hy, hz) then
-      x, y, z, mode = hx, hy, hz, 'weapon-hit'
-    else
-      local tx, ty, tz = AIMING.target()
-      if AIMING.usable(c, muzzle, 20, 200, tx, ty, tz) then x, y, z, mode = tx, ty, tz, 'aim-target' end
-    end
+  if have then
+    x, y, z, mode = hx, hy, hz, 'weapon-hit'
+  elseif not fp then
+    local tx, ty, tz = AIMING.target()
+    if AIMING.usable(c, muzzle, 20, 200, tx, ty, tz) then x, y, z, mode = tx, ty, tz, 'aim-target' end
   end
   AIMING.px, AIMING.py, AIMING.pz = x, y, z
   x, y, z = x - muzzle[1], y - muzzle[2], z - muzzle[3]
@@ -1237,6 +1264,10 @@ local weapon_diagnostic = (function()
       end
       log('aim quick t=%.6f %s camera=%.4f,%.4f,%.4f forward=%.6f,%.6f,%.6f muzzle=%.4f,%.4f,%.4f target=%s %s',
           t, label, c.x, c.y, c.z, c.fx, c.fy, c.fz, muzzle[1], muzzle[2], muzzle[3], target, table.concat(bits, ' '))
+      local u = history_unit
+      local fx, fy, fz
+      if u and chef.unit_alive(u) then fx, fy, fz = chef.unit_rotation(u) end
+      if type(fx) == 'number' then log('aim barrel t=%.6f %.6f,%.6f,%.6f', t, fx, fy, fz) end
     end
   end)()
   -- test.c5: aiming a weapon the mod doesn't know, what is at my hand, for its kind (the Apex's, the Sightliner's).

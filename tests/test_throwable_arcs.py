@@ -2206,8 +2206,10 @@ class ArcTest(unittest.TestCase):
           f.E['Unit.animation_get_constraint_target'] = function(u, i) return f.target and 'matrix' or nil end
           f.E['Script.type_name'] = function(v) return v == 'matrix' and 'Matrix4x4' or 'Vector3' end
           f.E['Matrix4x4.translation'] = function(m) return 'at' end
+          f.hit_value = function() end
           f.E['Vector3.to_elements'] = function(v)
             if v == 'at' then return f.target[1], f.target[2], f.target[3] end
+            if v == f.hit_value then return f.hit_point[1], f.hit_point[2], f.hit_point[3] end
             return f.weapon_point[1], f.weapon_point[2], f.weapon_point[3]
           end
         end""")(self.fake, x, y, z, name)
@@ -2465,6 +2467,7 @@ class ArcTest(unittest.TestCase):
           f.E['GameSession.game_object_field'] = function(gs, g, field)
             f.reads[field] = (f.reads[field] or 0) + 1
             if g == 5 and field == 'u4d1h9a' then return 6 end
+            if field == 'x4joxek' and f.hit_point then return f.hit_value end
             return f.field_value
           end
           f.field_value = 'a vector'
@@ -2656,7 +2659,8 @@ class ArcTest(unittest.TestCase):
         self.lua.eval("function(u) u.z = 1.8 end")(gun)     # 0.5 m from the camera
         self.weapon_nodes(gun, (0.75, 0., 1.9))
         self.game_aim(102.25, 30., 3.)
-        self.game_weapon_hit(40., 0., 2.)                   # on the camera's line
+        self.game_weapon_hit(40., 0., 2.)
+        self.lua.eval("function(f) f.hit_point = { 40, 0, 2 } end")(self.fake)   # the crosshair's: on the camera's line
         self.fake['mouse']['right'] = True
         return gun
 
@@ -2666,25 +2670,94 @@ class ArcTest(unittest.TestCase):
         self.assertEqual(self.lines(), [])
         self.assertIn('(first person: not drawn)', self.logs())
 
-    def test_a_first_person_arc_starts_at_the_muzzle_for_the_crosshair_not_the_lagging_field(self):
+    def first_person_arc(self):
         self.fake.opts['weapon_arcs_first_person'] = True
         self.M = self.load()
         self.first_person_gl()
         self.frames(3)
         self.assertGreater(len(self.lines()), 20)
         self.assertIn('GL-21 Grenade Launcher (first person)', self.logs())
-        start, way = self.drawn_direction()
+
+    def drawn_heading(self):
+        _, way = self.drawn_direction()
+        return math.degrees(math.atan2(way[1], way[0]))
+
+    def test_a_first_person_arc_starts_at_the_muzzle_and_goes_to_the_weapons_point(self):
+        self.first_person_arc()
+        start, _ = self.drawn_direction()
         self.assertLess(math.dist(start, (.75, 0., 1.9)), .03)
-        self.assertAlmostEqual(math.degrees(math.atan2(way[1], way[0])), 0, delta=.3)
-        # the view turns: the camera's line goes at once; the field, from x4joxek for its distance only, can stay behind
+        self.assertAlmostEqual(self.drawn_heading(), 0, delta=.3)
+        self.lua.eval("function(f) f.weapon_point = { 40, 2, 2 } end")(self.fake)
+        self.frames(60)                      # at rest again: where the field says, the sight's sway and all
+        self.assertAlmostEqual(self.drawn_heading(), math.degrees(math.atan2(2, 39.25)), delta=.3)
+        self.assertIn('direction-mode=first-person', self.fire_and_logs())
+
+    def turn_the_field(self, rate_deg, fps, seconds=.25):
+        """the weapon's point swinging round the muzzle at rate_deg/s, 100 m out"""
+        self.lua.eval("""function(f) f.swing = function(deg)
+          local a = math.rad(deg)
+          f.weapon_point = { 0.75 + 100 * math.cos(a), 100 * math.sin(a), 1.9 } end end""")(self.fake)
+        heading = 0
+        for i in range(1, int(seconds * fps) + 1):
+            heading = rate_deg * i / fps
+            self.fake.swing(heading)
+            self.frames(1, 1 / fps)
+        return heading
+
+    def test_a_first_person_arc_reads_the_field_ahead_of_its_lateness(self):
+        self.first_person_arc()
+        field = self.turn_the_field(100, 60)
+        self.assertAlmostEqual(self.drawn_heading() - field, 100 * .04, delta=.5, msg='0.04 s ahead of the field as it comes')
+
+    def test_reading_ahead_doesnt_depend_on_the_frame_rate(self):
+        ahead = []
+        for fps in (30, 60, 120):
+            self.setUp()
+            self.first_person_arc()
+            field = self.turn_the_field(100, fps)
+            ahead.append(self.drawn_heading() - field)
+            self.M.shutdown()
+        self.assertLess(max(ahead) - min(ahead), 1.0, ahead)
+
+    def test_reading_ahead_settles_when_the_field_does(self):
+        self.first_person_arc()
+        field = self.turn_the_field(100, 60)
+        self.frames(30)
+        self.assertAlmostEqual(self.drawn_heading(), field, delta=.1)
+
+    def test_reading_ahead_is_limited(self):
+        self.first_person_arc()
+        field = self.turn_the_field(2000, 60, seconds=.03)
+        self.assertLessEqual(abs(self.drawn_heading() - field), 26)
+
+    def test_a_first_person_arc_with_no_weapon_field_goes_for_the_crosshair(self):
+        self.fake.opts['weapon_arcs_first_person'] = True
+        self.M = self.load()
+        self.first_person_gl()
+        self.aim_probe_game('af97ede7')      # no bdc1cb8a; af97ede7 gives the distance
+        self.lua.eval("""function(f)
+          f.field_value = function() end
+          f.weapon_point = { 40, 0, 2 }
+        end""")(self.fake)
+        self.frames(3)
+        self.assertAlmostEqual(self.drawn_heading(), 0, delta=.3)
         self.lua.eval("""function(f)
           local a = math.rad(8)
           f.cam.fx, f.cam.fy = math.cos(a), math.sin(a)
         end""")(self.fake)
         self.frames(1)
-        _, way = self.drawn_direction()
-        self.assertAlmostEqual(math.degrees(math.atan2(way[1], way[0])), 8, delta=.6)
-        self.assertIn('direction-mode=first-person', self.fire_and_logs())
+        self.assertAlmostEqual(self.drawn_heading(), 8, delta=.6)
+        self.assertIn('direction-mode=crosshair', self.fire_and_logs())
+
+    def test_a_third_person_arc_draws_the_field_as_it_comes(self):
+        gun = self.weapon_in_hand(self.GL)
+        self.weapon_nodes(gun, (.75, 0., 1.9))
+        self.game_aim(102.25, 0., 2.)
+        self.game_weapon_hit(100.75, 0., 1.9)
+        self.fake['mouse']['right'] = True
+        self.frames(3)
+        field = self.turn_the_field(100, 60)
+        self.assertAlmostEqual(self.drawn_heading(), field, delta=.1)
 
     def test_the_first_person_option_can_change_while_playing(self):
         self.first_person_gl()
@@ -2699,7 +2772,7 @@ class ArcTest(unittest.TestCase):
 
     def test_with_another_mods_first_person_camera_the_arc_is_drawn_as_the_game_aims(self):
         gun = self.first_person_gl()
-        self.lua.eval("function(f) f.weapon_point = { 40, 1.5, 2 } end")(self.fake)  # 1.5 m off this camera's line
+        self.lua.eval("function(f) f.hit_point = { 40, 1.5, 2 } end")(self.fake)  # 1.5 m off this camera's line
         self.frames(2)
         self.assertEqual(self.lines(), [], 'not sure yet')
         self.frames(40)
@@ -2709,7 +2782,7 @@ class ArcTest(unittest.TestCase):
 
     def test_a_field_off_the_camera_while_it_turns_doesnt_make_it_another_mods(self):
         self.first_person_gl()
-        self.lua.eval("function(f) f.weapon_point = { 40, 1.5, 2 } end")(self.fake)
+        self.lua.eval("function(f) f.hit_point = { 40, 1.5, 2 } end")(self.fake)
         for i in range(60):
             a = math.radians(i * .5)
             self.lua.eval("function(f, x, y) f.cam.fx, f.cam.fy = x, y end")(self.fake, math.cos(a), math.sin(a))
