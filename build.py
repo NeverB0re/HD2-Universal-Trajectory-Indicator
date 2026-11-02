@@ -21,6 +21,7 @@ import png_rgba  # noqa: E402
 SOURCE = os.path.join(HERE, "src", "universal_trajectory_indicator.lua")
 ARMOUR = os.path.join(HERE, "src", "armour_table.lua")
 WEAPON_TYPES = os.path.join(HERE, "src", "weapon_types.lua")
+WEAPON_UNITS = os.path.join(HERE, "src", "weapon_units.lua")
 GRENADE_PROFILES = os.path.join(HERE, "src", "grenade_profiles.lua")
 ICON = os.path.join(HERE, "src", "icon.png")   # the mod's thumbnail in the mod manager (tools/make_icon.py)
 ICONS = {"deploy": os.path.join(HERE, "src", "c4_deploy.png"), "detonate": os.path.join(HERE, "src", "c4_detonate.png")}
@@ -77,15 +78,18 @@ def built_source(development=False):
         armour = f.read()
     with open(WEAPON_TYPES, encoding="utf-8") as f:
         weapon_types = f.read()
+    with open(WEAPON_UNITS, encoding="utf-8") as f:
+        weapon_units = f.read()
     with open(GRENADE_PROFILES, encoding="utf-8") as f:
         grenade_profiles = f.read()
-    for slot in ('"@ARMOUR@"', '"@ICONS@"', '"@WEAPON_TYPES@"', '"@GRENADE_PROFILES@"'):
+    for slot in ('"@ARMOUR@"', '"@ICONS@"', '"@WEAPON_TYPES@"', '"@WEAPON_UNITS@"', '"@GRENADE_PROFILES@"'):
         if source.count(slot) != 1:
             raise SystemExit("universal_trajectory_indicator.lua has no single %s slot" % slot)
     icons = ", ".join("%s = { %s }" % (mode, ", ".join("%d, '%016x'" % (n, icon_id(mode, n)) for n in ICON_SIZES))
                       for mode in sorted(ICONS))
     return (source.replace('"@ARMOUR@"', "(function()\n" + armour + "end)()").replace('"@ICONS@"', "{ %s }" % icons)
             .replace('"@WEAPON_TYPES@"', "(function()\n" + weapon_types + "end)()")
+            .replace('"@WEAPON_UNITS@"', "(function()\n" + weapon_units + "end)()")
             .replace('"@GRENADE_PROFILES@"', "(function()\n" + grenade_profiles + "end)()"))
 
 

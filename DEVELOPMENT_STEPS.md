@@ -224,3 +224,21 @@ Regression checks cover slung/unsupported high aim, dive alignment, mounted hand
 while existing prone, first-person and FRV passenger checks remain in the suite. Runtime verification is pending:
 check the ship, an emplacement, then an unsupported support weapon while a supported launcher is slung; finally
 confirm that handheld supported aiming still works. No firing or recalibration is required for these checks.
+
+
+## Actual held candidate before support filtering: 1.2.1-test.3 (2026-11-02)
+
+The user confirmed test.2 suppresses ship/emplacement arcs, but Sterilizer/Cremator still show a path below the gun.
+The saved 20:37 session explicitly selects GP-20 Ultimatum with hand pose 60 at t=283.899, while the Cremator root
+78a8185f63a70795 is present and aligned 0.998-1.000 in adjacent diagnostic samples. A 0.35 m distance gate alone
+cannot establish possession, and the supported-only watch omitted the actual unsupported gun from comparison.
+The existing Filediver listing provides 107 player weapon roots across primary/sidearm/support directories.
+The same half-second shared watch now includes these roots; selection compares all candidates before consulting
+the ballistic support table. Unsupported winners and exact ambiguous ties yield no overlay. Cache hysteresis only
+relaxes the winning previous unit's direction threshold; it cannot bypass a stronger unsupported candidate.
+The catalog excludes attachments, magazines, hoses and backpacks. tools/generate_weapon_units.py rebuilds or
+checks it from an already available resource listing, without downloads or game experiments. This catalog does
+not turn on trajectories for unmodeled weapons. Idle aim circles safely skip unsupported entries.
+Known limitation: possession remains geometric when an exact equipped-unit API is unavailable; the catalog is a
+snapshot, so newly added root kinds require catalog maintenance. Actual test.3 gameplay remains unverified.
+The all-weapon trajectory coverage objective is unchanged. Publish only after the runtime regression passes.

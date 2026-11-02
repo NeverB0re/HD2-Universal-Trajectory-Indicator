@@ -9,7 +9,7 @@
 -- Transmog's catalog (Nexus 16633).
 local chef = ...
 local M = {}
-local VERSION = '1.2.1-test.2'
+local VERSION = '1.2.1-test.3'
 
 if chef.has and chef.has('own_log') then chef.own_log('universal_trajectory_indicator') end
 local function log(fmt, ...) chef.log(fmt, ...) end
@@ -826,9 +826,12 @@ local WEAPONS = {
   ['b814eece17533bc4'] = { 0, 0, 0, false, 'AMW-20 Apex', circle = true },
   ['41f2def484634b59'] = { 0, 0, 0, false, 'R-40 Sightliner', circle = true },
 }
+local weapon_units = {}
+for kind, name in ("@WEAPON_UNITS@"):gmatch('(%x+) (%S+)') do weapon_units[kind] = name end
 local weapon_watch
 do
   local kinds = {}
+  for kind in pairs(weapon_units) do kinds[kind] = true end
   for kind in pairs(WEAPONS) do kinds[kind] = true end
   weapon_watch = chef.watch and chef.watch(kinds, 0.5)
 end
@@ -854,18 +857,9 @@ local function held_weapon(c)
     -- Use the same hand/root tolerance already used for positive held-weapon and idle-circle identification.
     return not hand or d <= 0.35 * 0.35, d
   end
-  if held and chef.unit_alive(held.unit) then
-    local nearby, hand_d = near(held.unit)
-    if nearby then
-      local fx, fy, fz = chef.unit_rotation(held.unit)
-      local a = type(fx) == 'number' and fx * c.fx + fy * c.fy + fz * c.fz
-      if a and ((hand_d and hand_d <= 0.35 * 0.35 and a >= 0) or a >= AIMING.HELD_KEEP) then
-        return held.kind, held.unit
-      end
-    end
-  end
+  local previous = held
   held, held_miss = nil, nil
-  local best, best_a
+  local best, best_a, ambiguous
   for _, it in ipairs(weapon_watch.items) do
     if chef.unit_alive(it.unit) then
       local nearby, hand_d = near(it.unit)
@@ -876,15 +870,27 @@ local function held_weapon(c)
         -- hand is stronger evidence than camera alignment; prefer the nearest such root to a slung weapon.
         local strong = hand_d and hand_d <= 0.35 * 0.35 and a and a >= 0
         local score = strong and (2 - hand_d) or a
-        if score and (not best_a or score > best_a) then best, best_a = it, score end
+        if score and (not best_a or score > best_a) then
+          best, best_a, ambiguous = it, score, false
+        elseif score and score == best_a and it.unit ~= best.unit then
+          ambiguous = true
+        end
       end
     end
   end
-  if best and best_a >= HELD_ALONG then
+  local threshold = best and previous and best.unit == previous.unit and AIMING.HELD_KEEP or HELD_ALONG
+  if best and not ambiguous and best_a >= threshold then
+    if not WEAPONS[best.kind] then
+      held_miss = 'unsupported weapon: ' .. tostring(weapon_units[best.kind])
+      return nil
+    end
     held = { kind = best.kind, unit = best.unit }
     return best.kind, best.unit
   end
-  if best then held_miss = string.format('%s points %.3f along the camera', WEAPONS[best.kind][5], best_a) end
+  if best then
+    local name = WEAPONS[best.kind] and WEAPONS[best.kind][5] or weapon_units[best.kind]
+    held_miss = ambiguous and 'ambiguous weapon at hand' or string.format('%s points %.3f along the camera', name, best_a)
+  end
   return nil
 end
 
@@ -1199,7 +1205,8 @@ AIMING.idle_circle = (function()
       if hand and grip ~= 40 and grip ~= 41 and grip ~= 42 then
         local best
         for _, it in ipairs(weapon_watch.items) do
-          if WEAPONS[it.kind].circle and not WEAPONS[it.kind].off and chef.unit_alive(it.unit) then
+          local w = WEAPONS[it.kind]
+          if w and w.circle and not w.off and chef.unit_alive(it.unit) then
             local x, y, z = chef.unit_position(it.unit)
             local d = x and (x - hand[1]) ^ 2 + (y - hand[2]) ^ 2 + (z - hand[3]) ^ 2
             if d and d <= 0.35 * 0.35 and (not best or d < best) then best, kind, unit = d, it.kind, it.unit end

@@ -681,6 +681,63 @@ class ArcTest(unittest.TestCase):
         self.frames(1)
         self.assertGreater(len(self.lines()), 20, 'handheld aiming returns immediately')
 
+    def test_sterilizer_and_cremator_override_a_cached_holstered_ultimatum(self):
+        for kind in ('43b2d7766120203b', '78a8185f63a70795'):
+            with self.subTest(kind=kind):
+                self.setUp()
+                gun = self.weapon_in_hand('9eb160830321bfd6')
+                self.right_hand_at(gun.x, gun.y, gun.z)
+                self.fake['mouse']['right'] = True
+                self.frames(3)
+                self.assertGreater(len(self.lines()), 20)
+                self.hand_pose(60)  # observed in the false GP-20 selection, 2026-11-02
+                other = self.add_unit(kind, gun.x, gun.y, gun.z)
+                self.lua.eval('function(g) g.f = {1, 0, 0} end')(other)
+                gun.y += .2  # still inside the old 0.35 m positive-match radius
+                self.frames(2)
+                self.assertTrue(self.no_arc(), 'actual unsupported gun must beat the nearby holstered pistol')
+                self.frames(31)  # rejection messages share the existing half-second log throttle
+                self.assertIn('unsupported weapon:', self.logs())
+                other.x = 30
+                gun.y -= .2
+                self.frames(2)
+                self.assertGreater(len(self.lines()), 20, 'supported pistol can be selected again')
+
+    def test_unsupported_weapon_wins_alignment_fallback_without_a_hand_node(self):
+        gun = self.weapon_in_hand(self.GL)
+        self.fake['mouse']['right'] = True
+        self.frames(3)
+        self.assertGreater(len(self.lines()), 20)
+        self.lua.eval('function(g) g.f = {.97, .2431, 0} end')(gun)
+        other = self.add_unit('78a8185f63a70795', gun.x, gun.y, gun.z)
+        self.lua.eval('function(g) g.f = {1, 0, 0} end')(other)
+        self.frames(2)
+        self.assertTrue(self.no_arc(), 'cached supported weapon cannot bypass actual held selection')
+
+    def test_known_unsupported_roots_do_not_enable_arcs_or_crash_idle_circle(self):
+        with open(ta_build.WEAPON_UNITS, encoding='utf-8') as f:
+            catalog = self.lua.execute(f.read())
+        # Read the supported kinds from the source fixture independently of the runtime watch.
+        with open(SOURCE, encoding='utf-8') as f:
+            block = f.read().split('local WEAPONS = {', 1)[1].split('local weapon_units', 1)[0]
+        supported = set(re.findall(r"\['([0-9a-f]{16})'\]", block))
+        candidates = [line.split()[0] for line in catalog.splitlines() if line.strip()]
+        self.assertGreater(len(candidates), 100)
+        self.fake.changes['aim_circle_idle'](True)
+        for kind in candidates:
+            if kind in supported:
+                continue
+            with self.subTest(kind=kind):
+                other = self.weapon_in_hand(kind)
+                self.right_hand_at(other.x, other.y, other.z)
+                self.fake['mouse']['right'] = True
+                self.frames(2)
+                self.assertTrue(self.no_arc())
+                self.fake['mouse']['right'] = False
+                self.frames(15)
+                self.assertEqual(self.circles(), [])
+                other.x = 30
+
     def test_empty_hands_cannot_select_a_nearby_aligned_launcher(self):
         gun = self.weapon_in_hand(self.GL)
         self.right_hand_at(gun.x, gun.y, gun.z)
