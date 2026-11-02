@@ -9,7 +9,7 @@
 -- Transmog's catalog (Nexus 16633).
 local chef = ...
 local M = {}
-local VERSION = '1.2.1-test.3'
+local VERSION = '1.2.1'
 
 if chef.has and chef.has('own_log') then chef.own_log('universal_trajectory_indicator') end
 local function log(fmt, ...) chef.log(fmt, ...) end

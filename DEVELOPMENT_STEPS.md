@@ -242,3 +242,8 @@ not turn on trajectories for unmodeled weapons. Idle aim circles safely skip uns
 Known limitation: possession remains geometric when an exact equipped-unit API is unavailable; the catalog is a
 snapshot, so newly added root kinds require catalog maintenance. Actual test.3 gameplay remains unverified.
 The all-weapon trajectory coverage objective is unchanged. Publish only after the runtime regression passes.
+
+
+## Release 1.2.1 (2026-11-02)
+
+The user accepted test.3 and explicitly requested release. See RELEASE_REVIEW_1.2.1.md for source equivalence, automated and final-ZIP checks, performance evidence and remaining coverage limits. CHANGELOG.md and Nexus source files compare this release with 1.2.0. The release package contains no development collectors.
