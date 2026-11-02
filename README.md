@@ -79,7 +79,7 @@ Loader and enable both.
 
 ## Working on it
 
-Start with [HANDOVER.md](HANDOVER.md). Stable builds strip the development collectors and their hooks automatically;
+Stable builds strip the development collectors and their hooks automatically;
 a `-test.` version keeps them. See [WEAPON_MUZZLES.md](WEAPON_MUZZLES.md) and
 [NATIVE_PROJECTILE_RESEARCH.md](NATIVE_PROJECTILE_RESEARCH.md) for the muzzle and round evidence.
 

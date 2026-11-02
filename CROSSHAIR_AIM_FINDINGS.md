@@ -254,7 +254,7 @@ test.c8:
 - 조준하지 않을 때의 조준 원을 옵션 `aim_circle_idle`로 분리, 사용자 결정으로 기본값 꺼짐.
 - 그 옵션을 켰을 때 앉아 있으면 조준 원을 숨김 (`AIMING.idle_circle`이 `in_vehicle()` 확인). 보조석에서 조준하는 동안은 표시.
 - 옵션을 접히는 항목으로 나눔: 스트라타젬 궤적과 C4 궤적을 새로 추가, 무기 16종과 소총 3종을 개별로 끔.
-- 이름을 Universal Trajectory Indicator로 변경. 내부 식별자는 유지 (`HANDOVER.md` 3장).
+- 이름을 Universal Trajectory Indicator로 변경. 내부 식별자(리소스 이름, Guid, 옵션 id)는 저장값이 이어지도록 유지.
 - 정식 빌드: 진단 코드 제거. 제거한 소스로 전체 테스트를 돌렸을 때 실패는 진단 로그를 찾는 테스트뿐이고 Lua 오류는 없었음.
 
 ## Nexus 남은 항목 (포크 세션 정리 기준)
