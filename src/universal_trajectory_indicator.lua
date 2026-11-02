@@ -1,17 +1,17 @@
 -- HD2-Addon: mods/codex/throwable_arcs
--- Universal Trajectory Indicator (Stratagem and C4 Trajectory until 1.1.0, Throwable Arcs until 1.0.1): while a stratagem ball is in my hand and left mouse is held, or C4 is aimed with right mouse, draws
+-- Universal Trajectory Indicator: while a stratagem ball is in my hand and left mouse is held, or C4 is aimed with right mouse, draws
 -- where it will fly. The arc is a world line: the game hides it behind walls and ground, so where it goes into the
 -- ground is where it lands (the terrain can't be asked). Below native Render Scale the game clips the 3D scene's drawing
 -- to a corner of the screen when the game's anti-aliasing is off (with it on, it shows whole). The numbers are measured
--- from real throws (mods/throwable-arcs/PLAN.md, section 6-1). 1.1.0: also weapons whose round falls, while aimed
+-- from real throws (mods/universal-trajectory-indicator/PLAN.md, section 6-1). 1.1.0: also weapons whose round falls, while aimed
 -- (WEAPON_ARCS_PLAN.md), and grenades, while G is held or one in hand is aimed or cooked.
 -- C4's hand pose and mode are read as NarrowHUD by luka189 reads them (Nexus 17882); the armour table comes from HD2
 -- Transmog's catalog (Nexus 16633).
 local chef = ...
 local M = {}
-local VERSION = '1.2.0'
+local VERSION = '1.2.1-test.1'
 
-if chef.has and chef.has('own_log') then chef.own_log('throwable_arcs') end
+if chef.has and chef.has('own_log') then chef.own_log('universal_trajectory_indicator') end
 local function log(fmt, ...) chef.log(fmt, ...) end
 
 local STRATAGEM_BALL = '16f397ca5f51f271'

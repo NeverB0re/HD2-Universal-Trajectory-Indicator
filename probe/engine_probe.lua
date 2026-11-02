@@ -1,6 +1,6 @@
 -- HD2-Addon: mods/codex/engine_probe
 -- HD2-Keep-On-Crash: yes
--- Engine Probe 0.2.1: a one-off test mod, not for release. Stage 0 of mods/throwable-arcs/PLAN.md. It writes to
+-- Engine Probe 0.2.1: a one-off test mod, not for release. Stage 0 of mods/universal-trajectory-indicator/PLAN.md. It writes to
 -- engine_probe.log (in %APPDATA%\Arrowhead\Helldivers2):
 --   always: what is in your hand while G (grenade) or ctrl + left mouse (stratagem) is held, and where a thrown one
 --           goes for up to 4 s (every 0.05 s), with the camera at the throw and the terrain's height where it stops;

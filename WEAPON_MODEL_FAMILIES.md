@@ -12,7 +12,7 @@
 
 같은 문서의 단계 0 결과는 27발의 추적에서 GL, CB-9, GP-20, RL-77의 저항 계수가 공통
 K 근처로 모였다고 기록한다. P-34의 속도/항력/수명은 예상과 달라 실측값으로 수정했다.
-현재도 `src/throwable_arcs.lua`의 단일 `fly` 함수가 모든 지원 무기를 계산한다:
+현재도 `src/universal_trajectory_indicator.lua`의 단일 `fly` 함수가 모든 지원 무기를 계산한다:
 
 ```
 a_drag = -K × D × |v| × v

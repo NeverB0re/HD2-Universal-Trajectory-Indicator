@@ -18,7 +18,7 @@ from build import SCAFFOLD, murmur64  # noqa: E402
 sys.path.insert(0, os.path.join(HERE, "tools"))
 import png_rgba  # noqa: E402
 
-SOURCE = os.path.join(HERE, "src", "throwable_arcs.lua")
+SOURCE = os.path.join(HERE, "src", "universal_trajectory_indicator.lua")
 ARMOUR = os.path.join(HERE, "src", "armour_table.lua")
 WEAPON_TYPES = os.path.join(HERE, "src", "weapon_types.lua")
 GRENADE_PROFILES = os.path.join(HERE, "src", "grenade_profiles.lua")
@@ -81,7 +81,7 @@ def built_source(development=False):
         grenade_profiles = f.read()
     for slot in ('"@ARMOUR@"', '"@ICONS@"', '"@WEAPON_TYPES@"', '"@GRENADE_PROFILES@"'):
         if source.count(slot) != 1:
-            raise SystemExit("throwable_arcs.lua has no single %s slot" % slot)
+            raise SystemExit("universal_trajectory_indicator.lua has no single %s slot" % slot)
     icons = ", ".join("%s = { %s }" % (mode, ", ".join("%d, '%016x'" % (n, icon_id(mode, n)) for n in ICON_SIZES))
                       for mode in sorted(ICONS))
     return (source.replace('"@ARMOUR@"', "(function()\n" + armour + "end)()").replace('"@ICONS@"', "{ %s }" % icons)

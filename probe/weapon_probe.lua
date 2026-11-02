@@ -1,5 +1,5 @@
 -- HD2-Addon: mods/codex/weapon_probe
--- Weapon Probe 0.1.0: a one-off test mod, not for release. Stage 0 of mods/throwable-arcs/WEAPON_ARCS_PLAN.md. It
+-- Weapon Probe 0.1.0: a one-off test mod, not for release. Stage 0 of mods/universal-trajectory-indicator/WEAPON_ARCS_PLAN.md. It
 -- draws nothing and changes nothing; it writes weapon_probe.log (in %APPDATA%\Arrowhead\Helldivers2):
 --   the weapon in hand: when the hand pose changes, when aiming begins and at each shot, the weapon units on my
 --     helldiver (named from filediver's hash list) and the unnamed units on it that point along the camera, with

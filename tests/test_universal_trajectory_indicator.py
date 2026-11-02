@@ -1,4 +1,4 @@
-"""Universal Trajectory Indicator on PUC Lua 5.1 (lupa) against a fake Chef Shared Loader:  python tests/test_throwable_arcs.py"""
+"""Universal Trajectory Indicator on PUC Lua 5.1 (lupa) against a fake Chef Shared Loader:  python tests/test_universal_trajectory_indicator.py"""
 import importlib.util
 import json
 import math
@@ -9,7 +9,7 @@ import unittest
 import lupa.lua51 as lua51
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-SOURCE = os.path.join(HERE, "..", "src", "throwable_arcs.lua")
+SOURCE = os.path.join(HERE, "..", "src", "universal_trajectory_indicator.lua")
 _spec = importlib.util.spec_from_file_location("ta_build", os.path.join(HERE, "..", "build.py"))
 ta_build = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(ta_build)   # the mod's build.py: the source with its armour table in
@@ -45,7 +45,7 @@ end
 
 chef = {
   api = 3, loader_version = '1.2.1',
-  has = function() return true end, own_log = function() return true end,
+  has = function() return true end, own_log = function(name) fake.log_name = name; return true end,
   log = function(fmt, ...) fake.logs[#fake.logs + 1] = string.format(fmt, ...) end,
   time = function() return fake.t end,
   call = call, call_kind = function(name, kind, ...) return call(name, ...) end,
@@ -3020,6 +3020,13 @@ class ArcTest(unittest.TestCase):
         self.fake.changes['arc_solid'](False)
         self.frames(1)
         self.assertEqual(len(self.lines()), dashed)
+
+    def test_renamed_log_keeps_existing_settings_identity(self):
+        self.assertEqual(self.fake.log_name, 'universal_trajectory_indicator')
+        self.assertEqual(ta_build.RESOURCE, 'mods/codex/throwable_arcs')
+        self.assertEqual(ta_build.MANIFEST['Guid'], '7d2c9b4e-31a8-4f6c-b0e5-9a4f2d6c8e17')
+        stable = ta_build.strip_development_tracing(ta_build.built_source(development=True))
+        self.assertIn("chef.own_log('universal_trajectory_indicator')", stable)
 
     def test_the_manifest_tells_all_the_mod_does(self):
         text = ta_build.MANIFEST['Description']

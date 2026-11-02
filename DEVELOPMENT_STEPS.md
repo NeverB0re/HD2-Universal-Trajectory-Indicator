@@ -2,7 +2,7 @@
 
 ## Current baseline (2026-11-02)
 
-- The canonical workspace is `mods/throwable-arcs` on `main`, consolidated from the former `throwable-arcs-claude` linked worktree. That redundant worktree was removed after verifying the migrated files.
+- The canonical workspace is `mods/universal-trajectory-indicator` on `main`, consolidated from the former Claude linked worktree. That redundant worktree was removed after verifying the migrated files.
 - Version 1.2.0 is released on GitHub and Nexus. Preserve the existing release ZIP and internal resource/settings identifiers.
 - Current weapon direction uses the game avatar aim target; see `CROSSHAIR_AIM_FINDINGS.md` and `README.md`. The milestones and test-version notes below are historical, not a list of current unresolved defects.
 - Local experiment archives, earlier research and the Python environment remain available. The local handover is excluded from Git.

@@ -91,7 +91,7 @@ The mod only reads the game and draws; it never changes anything in the game or 
 [*]The armour list comes from the catalog of [b]HD2 Transmog[/b] (Nexus 16633).
 [*]Runs on [b]Chef Shared Loader[/b] by Th3chef. Parts adapted from Chef Shared Loader by Th3chef.
 [/list]
-Source: https://github.com/NeverB0re/HD2-Throwable-Arcs
+Source: https://github.com/NeverB0re/HD2-Universal-Trajectory-Indicator
 
 [line]
 
@@ -188,4 +188,4 @@ Source: https://github.com/NeverB0re/HD2-Throwable-Arcs
 [*]갑옷 목록은 [b]HD2 Transmog[/b](넥서스 16633)의 카탈로그에서 가져왔습니다.
 [*][b]Chef Shared Loader[/b](Th3chef) 위에서 작동합니다. Parts adapted from Chef Shared Loader by Th3chef.
 [/list]
-소스: https://github.com/NeverB0re/HD2-Throwable-Arcs
+소스: https://github.com/NeverB0re/HD2-Universal-Trajectory-Indicator

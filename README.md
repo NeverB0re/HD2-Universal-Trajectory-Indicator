@@ -1,7 +1,8 @@
 # Universal Trajectory Indicator
 
-(Called Stratagem and C4 Trajectory until 1.1.0, Throwable Arcs until 1.0.1. The mod's resource name, `mods/codex/throwable_arcs`,
-its manifest Guid and its log, `throwable_arcs.log`, stay: settings and learned throws are saved under them.)
+The project folder is `universal-trajectory-indicator`; its source is `src/universal_trajectory_indicator.lua`.
+New builds write `universal_trajectory_indicator.log` in the game settings folder. Existing logs remain historical records.
+The legacy resource key `mods/codex/throwable_arcs` and manifest Guid are compatibility identifiers: they preserve existing settings and learned throws.
 
 A **HELLDIVERS 2** mod that draws where your throw or shot will fly while you aim it:
 
@@ -65,12 +66,12 @@ Loader and enable both.
 
 | Path | What |
 | --- | --- |
-| `src/throwable_arcs.lua` | The mod (PUC Lua 5.1, runs inside Chef Shared Loader). `VERSION` is set here. |
+| `src/universal_trajectory_indicator.lua` | The mod (PUC Lua 5.1, runs inside Chef Shared Loader). `VERSION` is set here. |
 | `src/armour_table.lua` | Every named body armour: its throw-range bonus and its unit kinds, to tell the armour you wear. |
 | `src/c4_deploy.png`, `src/c4_detonate.png` | C4's mode icons (from the game's HUD atlas; `tools/c4_icons.py`). |
 | `src/icon.png` | The thumbnail in the mod manager (`tools/make_icon.py`). |
 | `build.py` | Builds `dist/Universal Trajectory Indicator v<VERSION>.zip`; a release is copied to `release/`, a test version to `test-builds/`. |
-| `tests/test_throwable_arcs.py` | Runs the mod against a fake loader (needs `lupa`). |
+| `tests/test_universal_trajectory_indicator.py` | Runs the mod against a fake loader (needs `lupa`). |
 | `PLAN.md` | The design notes and measurements from the test builds (Korean). |
 | `probe/` | Engine Probe, the test addon used to find what the game lets a mod read. |
 
@@ -85,7 +86,7 @@ a `-test.` version keeps them. See [WEAPON_MUZZLES.md](WEAPON_MUZZLES.md) and
 
 ```bash
 python -m pip install lupa
-python tests/test_throwable_arcs.py
+python tests/test_universal_trajectory_indicator.py
 python build.py
 ```
 

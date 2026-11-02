@@ -1,6 +1,6 @@
 -- The network weapon types that declare a fire mode field (if5_pz), by their stand-in names: from NarrowHUD's
 -- game data (luka189, github.com/luka189/NarrowHUD, src/data_generated.lua, game build 26088801). Based on NarrowHUD by
--- luka189; its licence is in THIRD_PARTY_NOTICES.txt. build.py puts this in throwable_arcs.lua's "@WEAPON_TYPES@".
+-- luka189; its licence is in THIRD_PARTY_NOTICES.txt. build.py puts this in universal_trajectory_indicator.lua's "@WEAPON_TYPES@".
 return [[
 cb5i1m rt6fam r8qx1x ayy2lmj tspk_2d nor4hjc g_b_smc u2rur0f baj_bt xtkwjc p4p3w1g q_ds4ja hhgr6ab d3kc2ja
 fy1w9ra vb9v6c o11x9tk zn0uqwd ooyfyk zoaemkb hsiotza asugoqa h9cayib pyo51wa eqxvds fhqmg0a b8ayvi r0sk8kb
